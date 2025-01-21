@@ -1,0 +1,288 @@
+
+---
+title: "Initial Analysisv1"
+author: "Pujitha & Anitta"
+date: "2025-01-2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading necessary library
+
+```{r}
+library(haven)
+library (survey)
+library(ggplot2)
+library(dplyr)
+library(survey)
+library(rnaturalearthdata)
+library(tidyverse)
+
+
+```
+
+## Reading data
+
+```{r}
+data <- read_dta("Data/KEIR8CDT/KEIR8CFL.DTA")
+head (data)
+
+```
+
+
+
+
+```{r}
+# Reusable function to calculate counts for 1, 0, and NA values in a column
+calculate_counts <- function(data, column_name) {
+  counts <- data %>%
+    summarise(
+      count_1 = sum(data[[column_name]] == 1, na.rm = TRUE),  # Count where the value is 1
+      count_0 = sum(data[[column_name]] == 0, na.rm = TRUE),  # Count where the value is 0
+      count_NA = sum(is.na(data[[column_name]]))               # Count missing values (NA)
+    )
+  return(counts)
+}
+
+```
+
+```{r}
+# Calculate counts for each variable
+breast_examine <- calculate_counts(data, "v484a")
+had_breast <- calculate_counts(data, "s1103a")
+test_cervical <- calculate_counts(data, "v484b")
+have_cervical <- calculate_counts(data, "s1105a")
+
+# Print the results
+print("Breast Examination Counts:")
+print(breast_examine)
+
+print("Had Breast Cancer Counts:")
+print(had_breast)
+
+print("Cervical Cancer Test Counts:")
+print(test_cervical)
+
+print("Have Cervical Cancer Counts:")
+print(have_cervical)
+
+```
+
+
+
+## Creating the data subset with relevant variables
+
+```{r}
+# All the relevant variables for the analysis has been included in the data subset
+relevant_vars <- c("v005", "v021", "v022", "v023", "v024", "v012", "v106", "v130", "v131", 
+                   "v190", "v437", "v438", "v445", "v155", "v501", "v228", "v463z", "v716", 
+                   "v025", "v101", "v113", "v116", "v127", "v161", "v201","v484a","v484b",
+                   "s1102c","s1103a","s1103b","s1105a","s1105b","v001")
+
+data_subset <- data %>%
+  select(all_of(relevant_vars))
+
+# Then I created a survey design object
+survey_design <- svydesign(id = ~v001, strata = ~v022, weights = ~v005, data = data_subset, nest = TRUE)
+
+options(survey.lonely.psu = "adjust")
+
+# Calculate prevalence
+prevalence_breast <- svymean(~v484a, design = survey_design,na.rm = TRUE)
+print("Breast cancer")
+cat("Weighted Prevalence:", coef(prevalence_breast) * 100, "%\n")
+cat("Standard Error:", SE(prevalence_breast) * 100, "%\n")
+
+prevalence_cervical <- svymean(~v484b, design = survey_design,na.rm = TRUE)
+print("Cervical cancer")
+cat("Weighted Prevalence:", coef(prevalence_cervical) * 100, "%\n")
+cat("Standard Error:", SE(prevalence_cervical) * 100, "%\n")
+
+```
+
+
+# prevalence of aware they examine by age
+```{r}
+data_subset$age_group <- cut(data_subset$v012, 
+                        breaks = c(15, 30, 35, 40, 45, 50),  # Define the correct intervals
+                        right = FALSE, 
+                        labels = c("15-29", "30-34", "35-39", "40-44", "45-49"),
+                        include.lowest = TRUE)
+
+# Create additional age groups such as 30-44, 40-49
+data_subset$age_group_30_44 <- cut(data_subset$v012,
+                               breaks = c(30, 35, 40, 45),
+                               right = FALSE,
+                               labels = c("30-34", "35-39", "40-44"),
+                               include.lowest = TRUE)
+
+data_subset$age_group_40_49 <- cut(data_subset$v012,
+                               breaks = c(40, 45, 50),
+                               right = FALSE,
+                               labels = c("40-44", "45-49"),
+                               include.lowest = TRUE)
+
+survey_design <- svydesign(id = ~v001, strata = ~v022, weights = ~v005, data = data_subset, nest = TRUE)
+
+options(survey.lonely.psu = "adjust")
+
+
+#  Calculate weighted prevalence for aware can examine breast cancer by the new age groups
+prevalence_aware_breast_by_age <- svyby(~s1102c, data_subset$age_group, design = survey_design,FUN = svymean,na.rm = TRUE)
+prevalence_aware_breast_by_age$percentage <- prevalence_aware_breast_by_age[, 2] * 100
+
+# Print results
+print("Breast Cancer Awareness Prevalence by Age Group (in %):")
+print(prevalence_aware_breast_by_age)
+
+
+
+
+```
+
+
+# prevalence examined breast and cancer by age
+
+```{r}
+
+# Create correct age groups based on your specified ranges
+data_subset$age_group <- cut(data_subset$v012, 
+                        breaks = c(15, 30, 35, 40, 45, 50),  # Define the correct intervals
+                        right = FALSE, 
+                        labels = c("15-29", "30-34", "35-39", "40-44", "45-49"),
+                        include.lowest = TRUE)
+
+# Create additional age groups such as 30-44, 40-49
+data_subset$age_group_30_44 <- cut(data_subset$v012,
+                               breaks = c(30, 35, 40, 45),
+                               right = FALSE,
+                               labels = c("30-34", "35-39", "40-44"),
+                               include.lowest = TRUE)
+
+data_subset$age_group_40_49 <- cut(data_subset$v012,
+                               breaks = c(40, 45, 50),
+                               right = FALSE,
+                               labels = c("40-44", "45-49"),
+                               include.lowest = TRUE)
+
+survey_design <- svydesign(id = ~v001, strata = ~v022, weights = ~v005, data = data_subset, nest = TRUE)
+
+options(survey.lonely.psu = "adjust")
+
+
+#  Calculate weighted prevalence for breast cancer (v484a) by the new age groups
+prevalence_breast_by_age <- svyby(~v484a, ~data_subset$age_group, design = survey_design, FUN = svymean, na.rm = TRUE)
+
+
+print("Examine Breast Cancer Prevalence by Age Group:")
+print((prevalence_breast_by_age)*100, "%\n")
+
+
+prevalence_breast_30_44 <-
+
+# Calculate weighted prevalence for cervical cancer (v484b) by the new age groups
+prevalence_cervical_by_age <- svyby(~v484b, ~data_subset$age_group, design = survey_design, FUN = svymean, na.rm = TRUE)
+
+print("Examine Cervical Cancer Prevalence by Age Group:")
+print((prevalence_cervical_by_age)*100, "%\n")
+
+# If you need totals for these age groups across all categories:
+total_breast_prevalence <- svymean(~v484a, design = survey_design, na.rm = TRUE)
+total_cervical_prevalence <- svymean(~v484b, design = survey_design, na.rm = TRUE)
+
+cat("Total Weighted Prevalence for Breast Cancer:", coef(total_breast_prevalence) * 100, "%\n")
+cat("Total Weighted Prevalence for Cervical Cancer:", coef(total_cervical_prevalence) * 100, "%\n")
+
+
+
+```
+
+#Prevalence told  by a doctor they had breast cancer
+```{r}
+
+data_subset$age_group <- cut(data_subset$v012, 
+                        breaks = c(15, 30, 35, 40, 45, 50),  # Define the correct intervals
+                        right = FALSE, 
+                        labels = c("15-29", "30-34", "35-39", "40-44", "45-49"),
+                        include.lowest = TRUE)
+
+# Create additional age groups such as 30-44, 40-49
+data_subset$age_group_30_44 <- cut(data_subset$v012,
+                               breaks = c(30, 35, 40, 45),
+                               right = FALSE,
+                               labels = c("30-34", "35-39", "40-44"),
+                               include.lowest = TRUE)
+
+data_subset$age_group_40_49 <- cut(data_subset$v012,
+                               breaks = c(40, 45, 50),
+                               right = FALSE,
+                               labels = c("40-44", "45-49"),
+                               include.lowest = TRUE)
+
+survey_design <- svydesign(id = ~v001, strata = ~v022, weights = ~v005, data = data_subset, nest = TRUE)
+
+options(survey.lonely.psu = "adjust")
+
+
+#  Calculate weighted prevalence for aware can examine breast cancer by the new age groups
+prevalence_told_breast_by_age$percentage <- prevalence_told_breast_by_age[, 2] * 100
+
+print("Told they had Breast Cancer Prevalence by Age Group (in %):")
+print(prevalence_told_breast_by_age)
+
+
+```
+
+```{r}
+
+# Assign regions to provinces based on v024
+data_subset <- data_subset %>%
+  mutate(region = case_when(
+    v024 %in% 1:6 ~ "Coast Province",
+    v024 %in% 7:9 ~ "North Eastern Province",
+    v024 %in% 10:17 ~ "Eastern Province",
+    v024 %in% 18:22 ~ "Central Province",
+    v024 %in% 23:36 ~ "Rift Valley Province",
+    v024 %in% 37:40 ~ "Western Province",
+    v024 %in% 41:46 ~ "Nyanza Province",
+    v024 == 47 ~ "Nairobi Province",
+    TRUE ~ NA_character_ # Handle any unexpected cases
+  ))
+
+# Check if the region assignment worked correctly
+print(table(data_subset$region, useNA = "ifany"))
+
+# Create the survey design with the updated data_subset
+survey_design <- svydesign(id = ~v001, strata = ~v022, weights = ~v005, data = data_subset, nest = TRUE)
+options(survey.lonely.psu = "adjust")
+
+# Calculate weighted prevalence for breast cancer (v484a) by region
+prevalence_breast_by_region <- svyby(~v484a, ~region, design = survey_design, FUN = svymean, na.rm = TRUE)
+
+# Add percentage column for clarity
+prevalence_breast_by_region <- prevalence_breast_by_region %>%
+  mutate(percentage = v484a * 100)
+
+# Print the results
+print("Breast Cancer Examination Prevalence by Region:")
+kable(prevalence_breast_by_region)
+
+# Calculate weighted prevalence for cervical cancer (v484b) by region
+prevalence_cervical_by_region <- svyby(~v484b, ~region, design = survey_design, FUN = svymean, na.rm = TRUE)
+
+# Add percentage column for clarity
+prevalence_cervical_by_region <- prevalence_cervical_by_region %>%
+  mutate(percentage = v484b * 100)
+
+# Print the results
+print("Cervical Cancer Examination Prevalence by Region:")
+kable(prevalence_cervical_by_region)
+
+
+
+
+
+```
