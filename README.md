@@ -1,4 +1,4 @@
-# Estimating-and-visualising-prevalences-of-health-outcomes-using-survey-data
+# Estimating and visualising prevalences of health outcomes using survey data
 
 Objective :
 
