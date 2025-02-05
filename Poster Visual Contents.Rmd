@@ -1,0 +1,311 @@
+
+
+<!-- Don't change anything above, except the title and author names, unless you know what you are doing. -->
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      tidy = FALSE,
+                      message = FALSE,
+                      fig.align = 'center',
+                      out.width = "100%")
+options(knitr.table.format = "html") 
+# Load any additional libraries here
+library(tidyverse)
+library(plotly)
+library(kableExtra)
+library(haven)
+library(readxl)
+
+library(sf)
+
+library(ggplot2)
+library(dplyr)
+```
+
+```{r, echo =FALSE}
+file_path <- "C:/Users/anitt/Downloads/Dataset.xlsx"
+dataset <- read_excel(file_path)
+
+
+subset_data <- dataset[1:3, 1:4]
+```
+
+```{r out.width='80%'}
+knitr::kable(subset_data, align = 'c',"html") %>%
+  kable_styling(font_size = 20)
+```
+```{r}
+library(DiagrammeR)
+
+grViz("
+digraph flowchart {
+  graph [layout = dot, rankdir = TB]
+
+  node [shape = rectangle, style = filled, fillcolor = lightblue]
+
+  start [label = 'Base Sample Frame: Kenya Household Master Sample Frame (K-HMSF)']
+  step1 [label = '10,000 EAs Selected\nRandomized into 4 Subsamples']
+  step2 [label = 'Subsample One Selected for 2022 KDHS\nStratified by Rural/Urban: 47 Counties, 92 Strata']
+  step3 [label = 'Cluster Development:\nHousehold Listing & Geo-Referencing']
+  step4 [label = 'Sample Size and Allocation:\n42,300 Households, 1,692 Clusters']
+  
+  // Stage 1 branch
+  step5a [label = 'Stage 1 – Cluster Selection:\nEPSEM Method']
+  step6a [label = 'Stage 1 – Household Listing:\nSampling Frame for Stage 2']
+  step7a [label = 'Stage 1 – Household Selection:\n25 Households per Cluster']
+
+  // Stage 2 branch
+  step5b [label = 'Stage 2 – Alternate Cluster Selection']
+  step6b [label = 'Stage 2 – Household Listing:\nDifferent Sampling Frame']
+  step7b [label = 'Stage 2 – Household Selection:\n30 Households per Cluster']
+
+  // Merging the stages
+  merge [label = 'Combined Data Collection & Processing:\nCAPI & Geo-Data Collection']
+
+  end [label = 'Survey Outcome:\n1,691 Clusters, Mandera Excluded Due to Insecurity\nData Weighting Based on Selection Probabilities']
+
+  // Flow connections
+  start -> step1 -> step2 -> step3 -> step4
+  step4 -> step5a -> step6a -> step7a -> merge
+  step4 -> step5b -> step6b -> step7b -> merge
+  merge -> end
+}
+")
+```
+
+```{r include=FALSE}
+# Step 1: Read the Excel data
+file_path <- "C:/Users/anitt/Downloads/Confidence interval breast cancer.xlsx"
+prevalence_data <- read_excel(file_path)
+
+# Step 2: Load the shapefile for Kenya
+kenya_shapefile <- st_read("C:/Users/anitt/Desktop/output/KEN_adm1.shp")
+```
+
+```{r out.width='80%', fig.align='center', fig.height=4, fig.width=8}
+kenya_shapefile <- st_transform(kenya_shapefile, crs = 32736) 
+
+province_names <- c(
+  "Central", "Coast", "Eastern", 
+  "Nairobi", "North Eastern", "Nyanza", 
+  "Rift Valley", "Western"
+)
+
+kenya_shapefile <- kenya_shapefile %>%
+  mutate(province = province_names[FID + 1]) 
+
+merged_data <- kenya_shapefile %>%
+  left_join(prevalence_data, by = c("FID" = "region"))
+
+# Step 3: Update the plot with confidence intervals in labels
+prevalence_map <- ggplot(data = merged_data) +
+  geom_sf(aes(fill = percentage), size=0.5) +
+  
+  geom_sf_text(
+    aes(label = paste0(province, "\n", 
+                       round(percentage, 1), "%")), 
+    size = 2, 
+    color = "black",
+    fontface = "bold"
+
+  ) +
+  scale_fill_gradientn(
+    colors = c("lightyellow", "orange", "red"),
+    breaks = c(5, 10, 15, 20, 25),
+    labels = c("<1–5%", "6–10%", "11–15%", "16–20%", "20%+"), # Explicitly adding 20%+
+    name = "Screening (%)",
+  ) +
+  theme_minimal() +
+  xlab("") +  
+  ylab("") +
+  theme(
+    axis.text = element_blank(),  # Remove lat/lon labels
+    axis.ticks = element_blank(), 
+    panel.grid = element_blank()  # Remove grid lines
+  )
+
+# Plot 2: Confidence Interval Map with Green Shades
+ci_map <- ggplot(data = merged_data) +
+  geom_sf(aes(fill = upper_CI), color = "black", size = 0.5, ) +  # Use upper_CI for the fill
+  geom_sf_text(
+    aes(label = paste0(province, "\n[", round(lower_CI, 1), "% - ", round(upper_CI, 1), "%]")), 
+    size = 2, 
+    color = "black",
+    fontface = "bold"
+  ) +
+  scale_fill_gradientn(
+    colors = c("lightyellow", "peachpuff", "darkorange"),  # Shades of green
+    breaks = seq(min(merged_data$upper_CI), max(merged_data$upper_CI), by = 5),  # Adjust based on your CI range
+    labels = scales::percent(seq(min(merged_data$upper_CI), max(merged_data$upper_CI), by = 5) / 100),
+    name = "Confidence Interval (%)"
+  ) +
+  theme_minimal() +
+  labs(
+    x = "", 
+    y = "",
+  ) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+
+library(patchwork)
+combined_plot <- prevalence_map + ci_map +
+  plot_annotation(
+    title = "Breast Cancer Prevalence and Confidence Intervals Across Kenya's Provinces",
+    theme = theme(plot.title = element_text(hjust = 0.5))
+  )
+
+combined_plot
+```
+```{r include=FALSE}
+file_path <- "C:/Users/anitt/Downloads/confidence cervical by region.xlsx"
+prevalence_data <- read_excel(file_path)
+
+kenya_shapefile <- st_read("C:/Users/anitt/Desktop/output/KEN_adm1.shp")
+```
+```{r out.width='80%', fig.align='center', fig.height=4, fig.width=8}
+kenya_shapefile <- st_transform(kenya_shapefile, crs = 32736) 
+
+province_names <- c(
+  "Central", "Coast", "Eastern", 
+  "Nairobi", "North Eastern", "Nyanza", 
+  "Rift Valley", "Western"
+)
+
+kenya_shapefile <- kenya_shapefile %>%
+  mutate(province = province_names[FID + 1]) 
+
+merged_data <- kenya_shapefile %>%
+  left_join(prevalence_data, by = c("FID" = "region"))
+
+# Step 3: Update the plot with confidence intervals in labels
+prevalence_map <- ggplot(data = merged_data) +
+  geom_sf(aes(fill = percentage), size=0.5) +
+  
+  geom_sf_text(
+    aes(label = paste0(province, "\n", 
+                       round(percentage, 1), "%")), 
+    size = 2, 
+    color = "black",
+    fontface = "bold"
+
+  ) +
+  scale_fill_gradientn(
+    colors = c("lightyellow", "orange", "red"),
+    breaks = c(5, 10, 15, 20, 25),
+    labels = c("<1–5%", "6–10%", "11–15%", "16–20%", "20%+"), # Explicitly adding 20%+
+    name = "Screening (%)",
+  ) +
+  theme_minimal() +
+  xlab("") +  
+  ylab("") +
+  theme(
+    axis.text = element_blank(),  # Remove lat/lon labels
+    axis.ticks = element_blank(), 
+    panel.grid = element_blank()  # Remove grid lines
+  )
+
+ci_map <- ggplot(data = merged_data) +
+  geom_sf(aes(fill = upper_CI), color = "black", size = 0.5, ) +  # Use upper_CI for the fill
+  geom_sf_text(
+    aes(label = paste0(province, "\n[", round(lower_CI, 1), "% - ", round(upper_CI, 1), "%]")), 
+    size = 2, 
+    color = "black",
+    fontface = "bold"
+  ) +
+  scale_fill_gradientn(
+    colors = c("lightyellow", "peachpuff", "darkorange"),  # Shades of green
+    breaks = seq(min(merged_data$upper_CI), max(merged_data$upper_CI), by = 5),  # Adjust based on your CI range
+    labels = scales::percent(seq(min(merged_data$upper_CI), max(merged_data$upper_CI), by = 5) / 100),
+    name = "Confidence Interval (%)"
+  ) +
+  theme_minimal() +
+  labs(
+    x = "", 
+    y = "",
+  ) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+
+library(patchwork)
+combined_plot <- prevalence_map + ci_map +
+  plot_annotation(
+    title = "Cervical Cancer Prevalence and Confidence Intervals Across Kenya's Provinces",
+    theme = theme(plot.title = element_text(hjust = 0.5))
+  )
+
+combined_plot
+```
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(readxl)  # For reading Excel files
+library(scales)  # For percentage scales
+
+# Read the data from the Excel file
+data <- read_excel("C:/Users/anitt/Desktop/Book1.xlsx")
+
+# Create the plot with percentages
+ggplot(data, aes(x = Age_Group, y = Prevelence_Cervical, fill = Region)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+       x = "Age Group", 
+       y = "Screening rates (%)") +  # Update y-axis label to indicate percentage
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +  # Keep labels straight
+  scale_fill_manual(values = c("Central Province" = "#1b9e77", 
+                               "Coast Province" = "#d95f02", 
+                               "Eastern Province" = "#7570b3", 
+                               "Nairobi Province" = "#e7298a", 
+                               "North Eastern Province" = "#66a61e", 
+                               "Nyanza Province" = "#e6ab02", 
+                               "Rift Valley Province" = "#a6761d", 
+                               "Western Province" = "#666666")) +
+  scale_y_continuous(labels = percent)  # Convert y-axis to percentage
+
+```
+```{r}
+age_groups_1 <- c("15-29", "30-34", "35-39", "40-44", "45-49")
+screening_rates_1 <- c(0.01625, 0.03624, 0.03634, 0.06185, 0.04800)
+
+# Convert the first set of screening rates to percentages
+screening_rates_percentage_1 <- screening_rates_1 * 100
+
+# Define the second set of age groups and their corresponding screening rates
+screening_rates_2 <- c(0.0239, 0.0352, 0.0496, 0.0484, 0.0559)
+
+# Convert the second set of screening rates to percentages
+screening_rates_percentage_2 <- screening_rates_2 * 100
+
+# Create two data frames
+data_1 <- data.frame(age_groups = age_groups_1, screening_rates_percentage = screening_rates_percentage_1)
+data_2 <- data.frame(age_groups = age_groups_1, screening_rates_percentage = screening_rates_percentage_2)
+
+# Assign a numerical value to the age groups for the x-axis
+data_1$age_group_num <- 1:length(age_groups_1)
+data_2$age_group_num <- 1:length(age_groups_1)
+
+# Plot the first set of data
+plot(data_1$age_group_num, data_1$screening_rates_percentage, type = "o", col = "blue", 
+     xaxt = "n", xlab = "Age Group", ylab = "Screening Rate (%)", 
+     pch = 16, cex = 1.5, ylim = c(min(c(data_1$screening_rates_percentage, data_2$screening_rates_percentage)), 
+                                   max(c(data_1$screening_rates_percentage, data_2$screening_rates_percentage))))
+
+# Add custom x-axis labels
+axis(1, at = data_1$age_group_num, labels = data_1$age_groups)
+
+# Plot the second set of data on the same graph
+lines(data_2$age_group_num, data_2$screening_rates_percentage, type = "o", col = "red", pch = 16, cex = 1.5)
+
+# Add a legend
+legend("bottomright", legend = c("Cervical Cancer", "Breast Cancer"), col = c("blue", "red"), pch = 16, cex = 1.2)
+
+
+
+```
