@@ -1,0 +1,578 @@
+---
+title: "Initial Analysisv1"
+author: "Pujitha & Anitta"
+date: "2025-01-2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading necessary library
+
+```{r}
+library(haven)
+library (survey)
+library(ggplot2)
+library(dplyr)
+library(survey)
+library(rnaturalearthdata)
+library(tidyverse)
+
+
+```
+
+## Reading data
+
+```{r}
+data <- read_dta("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/Data/KEIR8CDT/KEIR8CFL.DTA")
+head (data)
+
+```
+
+## Creating the data subset with relevant variables
+
+```{r}
+# All the relevant variables for the analysis has been included in the data subset
+relevant_vars <- c("v005", "v021", "v022", "v023", "v024", "v012", "v106", "v130", "v131", 
+                   "v190", "v437", "v438", "v445", "v155", "v501", "v463z", "v716", 
+                   "v025","v484a","v484b","s1102c","s1103a","s1103b","s1105a","s1105b","v001")
+
+variable_labels <- c(
+  "v001" = "Cluster_Number",
+  "v005" = "Sample_Weight",
+  "v012" = "Age",
+  "v022" = "Sample_Strata",
+  "v023" = "Stratification",
+  "v024" = "Region",
+  "v106" = "Highest_Educational_Level",
+  "v130" = "Religion",
+  "v131" = "Ethnicity",
+  "v190" = "Wealth_Index",
+  "v437" = "Woman_Weight",
+  "v438" = "Woman_Height",
+  "v155" = "Literacy",
+  "v501" = "Marital_Status",
+  "v463z" = "Cigarette_and_Tobacco_Use",
+  "v716" = "Occupation",
+  "v025" = "Residence",
+  "s1102c" = "Awareness_of_Breast_Examination",
+  "s1103a" = "Diagnosed_with_Breast_Cancer",
+  "s1103b" = "Receiving_Treatment_Breast_Cancer",
+  "s1105a" = "Diagnosed_with_Cervical_Cancer",
+  "s1105b" = "Receiving_Treatment_Cervical_Cancer",
+  "v484a" = "Breast_Cancer_Screening",
+  "v484b" = "Cervical_Cancer_Screening"
+ 
+)
+
+relevant_vars <- names(variable_labels)
+
+# Select only relevant variables
+data_subset <- data %>%
+  select(all_of(relevant_vars))
+
+colnames(data_subset) <- variable_labels[relevant_vars]
+
+
+
+```
+
+# count NA values
+
+```{r}
+# Function to count NA, 0, and 1 values
+count_values <- function(data, column_name) {
+  data %>%
+    summarise(
+      NA_Count = sum(is.na(.data[[column_name]])),
+      Count_0 = sum(.data[[column_name]] == 0, na.rm = TRUE),
+      Count_1 = sum(.data[[column_name]] == 1, na.rm = TRUE)
+    )
+}
+
+# Count NA, 0, and 1 values for Breast_Cancer_Screening
+breast_screening_counts <- count_values(data_subset, "Breast_Cancer_Screening")
+
+# Count NA, 0, and 1 values for Cervical_Cancer_Screening
+cervical_screening_counts <- count_values(data_subset, "Cervical_Cancer_Screening")
+
+data_subset <- data_subset %>%
+  filter(!(is.na(Breast_Cancer_Screening) & is.na(Cervical_Cancer_Screening)))
+
+
+# Print results
+print("Breast Cancer Screening Counts:")
+print(breast_screening_counts)
+
+print("Cervical Cancer Screening Counts:")
+print(cervical_screening_counts)
+
+
+
+
+```
+
+```{r}
+
+# Ensure Region column is numeric
+data_subset <- data_subset %>%
+  mutate(Region = as.numeric(as.character(Region)))
+
+# Define region mapping for county names
+region_mapping <- c(
+  "1" = "Mombasa", "2" = "Kwale", "3" = "Kilifi", "4" = "Tana River", "5" = "Lamu",
+  "6" = "Taita Taveta", "7" = "Garissa", "8" = "Wajir", "9" = "Mandera", "10" = "Marsabit",
+  "11" = "Isiolo", "12" = "Meru", "13" = "Tharaka-Nithi", "14" = "Embu", "15" = "Kitui",
+  "16" = "Machakos", "17" = "Makueni", "18" = "Nyandarua", "19" = "Nyeri", "20" = "Kirinyaga",
+  "21" = "Murang'a", "22" = "Kiambu", "23" = "Turkana", "24" = "West Pokot", "25" = "Samburu",
+  "26" = "Trans Nzoia", "27" = "Uasin Gishu", "28" = "Elgeyo-Marakwet", "29" = "Nandi",
+  "30" = "Baringo", "31" = "Laikipia", "32" = "Nakuru", "33" = "Narok", "34" = "Kajiado",
+  "35" = "Kericho", "36" = "Bomet", "37" = "Kakamega", "38" = "Vihiga", "39" = "Bungoma",
+  "40" = "Busia", "41" = "Siaya", "42" = "Kisumu", "43" = "Homa Bay", "44" = "Migori",
+  "45" = "Kisii", "46" = "Nyamira", "47" = "Nairobi"
+)
+
+# Assign county names using region mapping
+data_subset <- data_subset %>%
+  mutate(County = region_mapping[as.character(Region)])
+
+# Assign province names based on Region codes
+data_subset <- data_subset %>%
+  mutate(Province = case_when(
+    Region %in% 1:6 ~ "Coast Province",
+    Region %in% 7:9 ~ "North Eastern Province",
+    Region %in% 10:17 ~ "Eastern Province",
+    Region %in% 18:22 ~ "Central Province",
+    Region %in% 23:36 ~ "Rift Valley Province",
+    Region %in% 37:40 ~ "Western Province",
+    Region %in% 41:46 ~ "Nyanza Province",
+    Region == 47 ~ "Nairobi Province",
+    TRUE ~ NA_character_  # Handle unexpected values
+  ))
+
+# Compute total count of 0 and 1 across the entire dataset
+total_count_0 <- sum(data_subset$Breast_Cancer_Screening == 0, na.rm = TRUE)
+total_count_1 <- sum(data_subset$Breast_Cancer_Screening == 1, na.rm = TRUE)
+
+# Count total, 0, and 1 by Age (unchanged)
+age_count <- data_subset %>%
+  group_by(Age) %>%
+  summarise(
+    Total_Count = n(),
+    Proportion = round((Total_Count / nrow(data_subset)) * 100, 2),
+    Count_0 = sum(Breast_Cancer_Screening == 0, na.rm = TRUE),
+    Count_1 = sum(Breast_Cancer_Screening == 1, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Percent_0 = round((Count_0 / Total_Count) * 100, 2),
+    Percent_1 = round((Count_1 / Total_Count) * 100, 2)
+  ) %>%
+  select(Age, Total_Count,Proportion, Count_0, Percent_0, Count_1, Percent_1) %>%
+  ungroup()
+
+# Count total, 0, and 1 by County with corrected proportions
+county_count <- data_subset %>%
+  group_by(County) %>%
+  summarise(
+    Total_Count = n(),
+    Proportion = round((Total_Count / nrow(data_subset)) * 100, 2),
+    Count_0 = sum(Breast_Cancer_Screening == 0, na.rm = TRUE),
+    Count_1 = sum(Breast_Cancer_Screening == 1, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Percent_0 = round((Count_0 / total_count_0) * 100, 2),  # Corrected proportion
+    Percent_1 = round((Count_1 / total_count_1) * 100, 2)   # Corrected proportion
+  ) %>%
+  select(County, Total_Count,Proportion, Count_0, Percent_0, Count_1, Percent_1) %>%
+  ungroup()
+
+# Count total, 0, and 1 by Province with corrected proportions
+province_count <- data_subset %>%
+  group_by(Province) %>%
+  summarise(
+    Total_Count = n(),
+    Proportion = round((Total_Count / nrow(data_subset)) * 100, 2),
+    Count_0 = sum(Breast_Cancer_Screening == 0, na.rm = TRUE),
+    Count_1 = sum(Breast_Cancer_Screening == 1, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Percent_0 = round((Count_0 / total_count_0) * 100, 2),  # Corrected proportion
+    Percent_1 = round((Count_1 / total_count_1) * 100, 2)   # Corrected proportion
+  ) %>%
+  select(Province, Total_Count,Proportion, Count_0, Percent_0, Count_1, Percent_1) %>%
+  ungroup()
+
+
+
+# Print results
+print("Count and Percentage of 0 and 1 by Age:")
+print(age_count)
+
+print("Count and Percentage of 0 and 1 by County:")
+print(county_count)
+
+print("Count and Percentage of 0 and 1 by Province:")
+print(province_count)
+
+
+
+
+```
+
+```{r}
+# Load necessary libraries
+library(survey)
+library(dplyr)
+
+# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
+data_subset <- data_subset %>%
+  mutate(Sample_Weight = Sample_Weight / 1e6)
+
+# Define survey design
+survey_design <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = data_subset, 
+  nest = TRUE
+)
+
+# Calculate weighted screening rate and confidence intervals for Breast Cancer Screening
+screening_breast <- svymean(~Breast_Cancer_Screening, design = survey_design, na.rm = TRUE)
+ci_breast <- confint(screening_breast) * 100  # Convert to percentage
+
+# Calculate weighted screening rate and confidence intervals for Cervical Cancer Screening
+screening_cervical <- svymean(~Cervical_Cancer_Screening, design = survey_design, na.rm = TRUE)
+ci_cervical <- confint(screening_cervical) * 100  # Convert to percentage
+
+# Print results with Confidence Intervals
+print(" Weighted Screening Rate for Breast Cancer Screening:")
+cat("Screening Rate:", round(coef(screening_breast) * 100, 2), "%\n")
+cat("95% CI:", round(ci_breast[1], 2), "% -", round(ci_breast[2], 2), "%\n")
+cat("Standard Error:", round(SE(screening_breast) * 100, 2), "%\n\n")
+
+print(" Weighted Screening Rate for Cervical Cancer Screening:")
+cat("Screening Rate:", round(coef(screening_cervical) * 100, 2), "%\n")
+cat("95% CI:", round(ci_cervical[1], 2), "% -", round(ci_cervical[2], 2), "%\n")
+cat("Standard Error:", round(SE(screening_cervical) * 100, 2), "%\n")
+
+
+```
+
+```{r}
+# Load necessary libraries
+library(survey)
+library(dplyr)
+
+# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
+data_subset <- data_subset %>%
+  mutate(Sample_Weight = Sample_Weight / 1e6)
+
+# Define age intervals within `data_subset`
+data_subset <- data_subset %>%
+  mutate(Age_Interval = case_when(
+    Age >= 18 & Age <= 24 ~ "18-24",
+    Age >= 25 & Age <= 34 ~ "25-34",
+    Age >= 35 & Age <= 44 ~ "35-44",
+    Age >= 45 & Age <= 54 ~ "45-54",
+    Age >= 55 & Age <= 64 ~ "55-64",
+    Age >= 65 ~ "65+",
+    TRUE ~ NA_character_
+  ))
+
+# Update survey design to include Age_Interval
+survey_design <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = data_subset,  # Now includes Age_Interval
+  nest = TRUE
+)
+
+# Function to calculate weighted screening rate and confidence intervals by age interval
+calculate_screening_by_age_interval <- function(variable_name, label) {
+  screening_by_age <- svyby(
+    formula = as.formula(paste("~", variable_name)),
+    by = ~Age_Interval,
+    design = survey_design,
+    FUN = svymean,
+    na.rm = TRUE
+  )
+
+  # Extract confidence intervals
+  ci_values <- confint(screening_by_age) * 100  # Convert to percentage
+
+  # Format results
+  screening_results <- data.frame(
+    Age_Interval = screening_by_age$Age_Interval,
+    Screening_Rate = round(coef(screening_by_age) * 100, 2),
+    CI_Lower = round(ci_values[, 1], 2),
+    CI_Upper = round(ci_values[, 2], 2),
+    Standard_Error = round(SE(screening_by_age) * 100, 2)
+  )
+
+  # Print results
+  print(paste("Weighted Screening Rate by Age Interval for", label))
+  print(screening_results)
+}
+
+# Calculate weighted screening rates by age interval
+calculate_screening_by_age_interval("Breast_Cancer_Screening", "Breast Cancer Screening")
+calculate_screening_by_age_interval("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+
+```
+
+# screening rates and CI by province
+
+```{r}
+# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
+data_subset <- data_subset %>%
+  mutate(Sample_Weight = Sample_Weight / 1e6)
+
+# Ensure Province is included in the dataset
+data_subset <- data_subset %>%
+  mutate(Province = case_when(
+    Region %in% 1:6 ~ "Coast Province",
+    Region %in% 7:9 ~ "North Eastern Province",
+    Region %in% 10:17 ~ "Eastern Province",
+    Region %in% 18:22 ~ "Central Province",
+    Region %in% 23:36 ~ "Rift Valley Province",
+    Region %in% 37:40 ~ "Western Province",
+    Region %in% 41:46 ~ "Nyanza Province",
+    Region == 47 ~ "Nairobi Province",
+    TRUE ~ NA_character_
+  ))
+
+# Update survey design to include Province
+survey_design <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = data_subset,  
+  nest = TRUE
+)
+
+# Function to calculate weighted screening rate and confidence intervals by province
+calculate_screening_by_province <- function(variable_name, label) {
+  screening_by_province <- svyby(
+    formula = as.formula(paste("~", variable_name)),
+    by = ~Province,
+    design = survey_design,
+    FUN = svymean,
+    na.rm = TRUE
+  )
+
+  # Extract confidence intervals
+  ci_values <- confint(screening_by_province) * 100  
+
+  # Format results
+  screening_results <- data.frame(
+    Province = screening_by_province$Province,
+    Screening_Rate = round(coef(screening_by_province) * 100, 2),
+    CI_Lower = round(ci_values[, 1], 2),
+    CI_Upper = round(ci_values[, 2], 2),
+    Standard_Error = round(SE(screening_by_province) * 100, 2)
+  )
+
+  # Print results
+  print(paste("Weighted Screening Rate by Province for", label))
+  print(screening_results)
+}
+
+# Calculate weighted screening rates by province
+calculate_screening_by_province("Breast_Cancer_Screening", "Breast Cancer Screening")
+calculate_screening_by_province("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+
+```
+
+# screening rates and CI by county
+
+```{r}
+# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
+data_subset <- data_subset %>%
+  mutate(Sample_Weight = Sample_Weight / 1e6)
+
+# Update survey design to include County
+survey_design <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = data_subset,  
+  nest = TRUE
+)
+
+# Function to calculate weighted screening rate and confidence intervals by county
+calculate_screening_by_county <- function(variable_name, label) {
+  screening_by_county <- svyby(
+    formula = as.formula(paste("~", variable_name)),
+    by = ~County,
+    design = survey_design,
+    FUN = svymean,
+    na.rm = TRUE
+  )
+
+  # Extract confidence intervals
+  ci_values <- confint(screening_by_county) * 100  
+
+  # Format results
+  screening_results <- data.frame(
+    County = screening_by_county$County,
+    Screening_Rate = round(coef(screening_by_county) * 100, 2),
+    CI_Lower = round(ci_values[, 1], 2),
+    CI_Upper = round(ci_values[, 2], 2),
+    Standard_Error = round(SE(screening_by_county) * 100, 2)
+  )
+
+  # Print results
+  print(paste("Weighted Screening Rate by County for", label))
+  print(screening_results)
+}
+
+# Calculate weighted screening rates by county
+calculate_screening_by_county("Breast_Cancer_Screening", "Breast Cancer Screening")
+calculate_screening_by_county("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+
+```
+
+# subset of women between 30-50
+
+```{r}
+data_subset_30_50 <- data_subset %>%
+  filter(Age >= 30 & Age <= 50)
+
+# Print the first few rows to confirm
+print("Subset of data for Age 30-50:")
+print(paste("Total number of records in Age 30-50 subset:", nrow(data_subset_30_50)))
+print(head(data_subset_30_50))
+
+# Compute proportion of women by Age within the 30-50 subset
+age_proportion_30_50 <- data_subset_30_50 %>%
+  group_by(Age) %>%
+  summarise(Count = n(), Proportion = round((Count / nrow(data_subset_30_50)) * 100, 2)) %>%
+  ungroup()
+
+# Print proportions
+print("Proportion of Women by Age (30-50):")
+print(age_proportion_30_50)
+
+
+
+```
+
+# 30-50 by province
+
+```{r}
+# Update survey design for the subset (Age 30-50)
+survey_design_30_50 <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = data_subset_30_50,  
+  nest = TRUE
+)
+
+# Function to calculate weighted screening rate and confidence intervals by province for Age 30-50
+calculate_screening_by_province_30_50 <- function(variable_name, label) {
+  screening_by_province <- svyby(
+    formula = as.formula(paste("~", variable_name)),
+    by = ~Province,
+    design = survey_design_30_50,
+    FUN = svymean,
+    na.rm = TRUE
+  )
+
+  # Extract confidence intervals
+  ci_values <- confint(screening_by_province) * 100  
+
+  # Format results
+  screening_results <- data.frame(
+    Province = screening_by_province$Province,
+    Screening_Rate = round(coef(screening_by_province) * 100, 2),
+    CI_Lower = round(ci_values[, 1], 2),
+    CI_Upper = round(ci_values[, 2], 2),
+    Standard_Error = round(SE(screening_by_province) * 100, 2)
+  )
+
+  # Print results
+  print(paste("Weighted Screening Rate by Province for Age 30-50:", label))
+  print(screening_results)
+}
+
+# Calculate weighted screening rates by province for Age 30-50
+calculate_screening_by_province_30_50("Breast_Cancer_Screening", "Breast Cancer Screening")
+calculate_screening_by_province_30_50("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+```
+
+# 30-50 by county
+
+```{r}
+# Update survey design for the subset (Age 30-50)
+survey_design_30_50 <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = data_subset_30_50,  
+  nest = TRUE
+)
+
+# Ensure binary 0/1 values and remove NA values for screening variables
+data_subset_30_50 <- data_subset_30_50 %>%
+  mutate(
+    Breast_Cancer_Screening = ifelse(Breast_Cancer_Screening %in% c(0, 1), Breast_Cancer_Screening, NA),
+    Cervical_Cancer_Screening = ifelse(Cervical_Cancer_Screening %in% c(0, 1), Cervical_Cancer_Screening, NA)
+  ) %>%
+  drop_na(Breast_Cancer_Screening, Cervical_Cancer_Screening)  # Remove rows with NA in screening variables
+
+# Function to calculate weighted screening rate and confidence intervals by county for Age 30-50
+calculate_screening_by_county_30_50 <- function(variable_name, label) {
+  unique_counties <- unique(data_subset_30_50$County)  # Get all unique counties
+  results_list <- list()  # Store results
+
+  for (county in unique_counties) {
+    # Subset survey design for the specific county
+    county_design <- subset(survey_design_30_50, County == county)
+
+    # Skip county if it has insufficient data (to prevent errors)
+    if (nrow(county_design$variables) == 0) next  
+
+    # Construct formula dynamically
+    formula_var <- as.formula(paste("~", variable_name))
+
+    # Calculate screening rate and CI using svyciprop()
+    screening_estimate <- svyciprop(formula_var, design = county_design, method = "logit", level = 0.95)
+
+    # Store results in a data frame
+    results_list[[county]] <- data.frame(
+      County = county,
+      Screening_Rate = round(coef(screening_estimate) * 100, 2),
+      CI_Lower = round(confint(screening_estimate)[1] * 100, 2),
+      CI_Upper = round(confint(screening_estimate)[2] * 100, 2),
+      Standard_Error = round(SE(screening_estimate) * 100, 2)
+    )
+  }
+
+  # Combine all county results
+  screening_results <- do.call(rbind, results_list)
+
+  # Print results
+  print(paste("Weighted Screening Rate by County for Age 30-50:", label))
+  print(screening_results)
+}
+
+# Calculate weighted screening rates by county for Age 30-50
+calculate_screening_by_county_30_50("Breast_Cancer_Screening", "Breast Cancer Screening")
+calculate_screening_by_county_30_50("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+
+
+```
+
+
+
+
