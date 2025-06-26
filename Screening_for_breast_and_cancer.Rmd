@@ -445,7 +445,7 @@ screening_cervical <- calculate_screening_by_province_30_50("Cervical_Cancer_Scr
 ```{r}
 # Load Kenya province shapefile
 
-kenya_province <- st_read("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/Data/output/KEN_adm1.shp")
+kenya_province <- st_read("shape_files/KEN_adm1.shp")
 
 # Step 1: Manually assign province names to shapefile using FID as index
 province_names <- c(
@@ -676,7 +676,7 @@ cervical_screening_county <- calculate_screening_by_county("Cervical_Cancer_Scre
 library(dplyr)
 
 # 1.Load and prepare county shapefile
-kenya_counties <- st_read("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/Data/ken_adm_iebc_20191031_shp (1)/ken_admbnda_adm1_iebc_20191031.shp")  
+kenya_counties <- st_read("shape_files/ken_admbnda_adm1_iebc_20191031.shp") 
 
 kenya_counties <- kenya_counties %>%
   rename(County = ADM1_EN) %>%
@@ -846,7 +846,8 @@ library(sf)
 library(dplyr)
 
 # Read the GPS cluster shapefile from DHS 2022
-gps_clusters <- st_read("Data/2022 GPS data/KEGE8AFL/KEGE8AFL.shp") 
+gps_clusters <- st_read("Kenya_Clusters/KEGE8AFL.shp")
+ 
 
 
 # Preview the data structure
@@ -881,7 +882,7 @@ merged_data_sf <- st_as_sf(merged_data, crs = st_crs(gps_clusters))
 #3. Read and Inspect Subcounty Boundary Shapefile
 
 # Load Kenya sub-county boundaries shapefile
-kenya_subcounties <-  st_read("C:\\Users\\Owner\\Downloads\\ke_subcounty\\ke_subcounty.shp")
+kenya_subcounties <-  st_read("shape_files/ke_subcounty.shp")
 
 # View first few rows of the shapefile
 head(kenya_subcounties)
@@ -1303,7 +1304,7 @@ library(dplyr)
 library(stringr)
 
 # Load and clean census data
-census_data <- read_excel("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/kenya_census.xlsx") %>%
+census_data <- read_excel("Census_data/kenya_census.xlsx") %>%
   rename(Subcounty_original = Subcounty) %>%
   mutate(Subcounty_clean = str_squish(str_to_title(Subcounty_original))) 
 
@@ -2180,7 +2181,7 @@ ggplot(map_breast_proj) +
 library(sf)
 
 # Load Kenya shapefile containing population and geographic info
-shapefile_path <- "C:/Users/Owner/Downloads/Kenya_2019_Population_Data_KNBS/Kenya_2019_Population_Data_KNBS.shp"
+shapefile_path <- "shape_files/Kenya_2019_Population_Data_KNBS.shp"
 
 # Read shapefile
 kenya_subcounties_2019 <- st_read(shapefile_path)
