@@ -127,29 +127,41 @@ prevalence_map <- ggplot(data = merged_data) +
 
 # Plot 2: Confidence Interval Map with Green Shades
 ci_map <- ggplot(data = merged_data) +
-  geom_sf(aes(fill = upper_CI), color = "black", size = 0.5, ) +  # Use upper_CI for the fill
+  # Base map using the upper confidence interval
+  geom_sf(aes(fill = upper_CI), color = "black", size = 0.5) +  
+  
+  # Add lower CI layer with transparency to indicate uncertainty
+  geom_sf(aes(fill = lower_CI), alpha = 0.3, color = NA) +  
+  
+  # Add text labels showing province and CI range
   geom_sf_text(
     aes(label = paste0(province, "\n[", round(lower_CI, 1), "% - ", round(upper_CI, 1), "%]")), 
-    size = 2, 
+    size = 3, 
     color = "black",
-    fontface = "bold"
+    fontface = "bold",
+    hjust = 0.5, vjust = 0.5
   ) +
+  
+  # Improved color scale for better visual interpretation
   scale_fill_gradientn(
-    colors = c("lightyellow", "peachpuff", "darkorange"),  # Shades of green
-    breaks = seq(min(merged_data$upper_CI), max(merged_data$upper_CI), by = 5),  # Adjust based on your CI range
-    labels = scales::percent(seq(min(merged_data$upper_CI), max(merged_data$upper_CI), by = 5) / 100),
+    colors = c("lightyellow", "peachpuff", "darkorange"),  
+    breaks = seq(min(merged_data$upper_CI, na.rm = TRUE), 
+                 max(merged_data$upper_CI, na.rm = TRUE), by = 5),
+    labels = scales::percent(seq(min(merged_data$upper_CI, na.rm = TRUE), 
+                                 max(merged_data$upper_CI, na.rm = TRUE), by = 5) / 100),
     name = "Confidence Interval (%)"
   ) +
+  
   theme_minimal() +
-  labs(
-    x = "", 
-    y = "",
-  ) +
+  labs(x = "", y = "") +
+  
+  # Remove unnecessary elements for a clean map
   theme(
     axis.text = element_blank(),
     axis.ticks = element_blank(),
     panel.grid = element_blank()
   )
+
 
 library(patchwork)
 combined_plot <- prevalence_map + ci_map +
@@ -159,6 +171,46 @@ combined_plot <- prevalence_map + ci_map +
   )
 
 combined_plot
+
+library(ggplot2)
+
+# Create a boxplot with confidence intervals
+box_plot <- ggplot(data = merged_data, aes(x = province, y = upper_CI)) +
+  geom_boxplot(aes(lower = lower_CI, upper = upper_CI), fill = "peachpuff", color = "black") +
+  geom_point(aes(y = (upper_CI + lower_CI) / 2), color = "darkred", size = 2) +  # Mean/central estimate
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = 0.2, color = "black") + # CI error bars
+  theme_minimal() +
+  labs(
+    title = "Boxplot with Confidence Intervals",
+    x = "Province",
+    y = "Confidence Interval (%)"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+
+# Print the box plot
+print(box_plot)
+
+
+library(ggplot2)
+
+# Dot and Error Bar Plot
+dot_error_plot <- ggplot(data = merged_data, aes(x = province, y = (upper_CI + lower_CI) / 2)) +
+  geom_point(aes(color = province), size = 3) +  # Dot for the mean/midpoint
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = 0.2, color = "black") +  # Error bars for CI
+  theme_minimal() +
+  labs(
+    title = "Dot and Error Bar Plot with Confidence Intervals",
+    x = "Province",
+    y = "Confidence Interval (%)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    legend.position = "none"
+  )
+
+# Print the plot
+print(dot_error_plot)
+
 ```
 ```{r include=FALSE}
 file_path <- "C:/Users/anitt/Downloads/confidence cervical by region.xlsx"
@@ -241,6 +293,22 @@ combined_plot <- prevalence_map + ci_map +
   )
 
 combined_plot
+dot_error_plot <- ggplot(data = merged_data, aes(x = province, y = (upper_CI + lower_CI) / 2)) +
+  geom_point(aes(color = province), size = 3) +  # Dot for the mean/midpoint
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = 0.2, color = "black") +  # Error bars for CI
+  theme_minimal() +
+  labs(
+    title = "Dot and Error Bar Plot with Confidence Intervals",
+    x = "Province",
+    y = "Confidence Interval (%)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    legend.position = "none"
+  )
+
+# Print the plot
+print(dot_error_plot)
 ```
 ```{r}
 # Load necessary libraries
@@ -306,6 +374,13 @@ lines(data_2$age_group_num, data_2$screening_rates_percentage, type = "o", col =
 # Add a legend
 legend("bottomright", legend = c("Cervical Cancer", "Breast Cancer"), col = c("blue", "red"), pch = 16, cex = 1.2)
 
+
+
+```
+
+
+
+```{r}
 
 
 ```
