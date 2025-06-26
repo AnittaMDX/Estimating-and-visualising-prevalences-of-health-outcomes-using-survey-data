@@ -5,6 +5,11 @@ date: "2025-01-2"
 output: html_document
 ---
 
+# This is an R Markdown document analyzing cancer screening rates in Kenya using DHS data
+# The analysis focuses on breast and cervical cancer screening patterns across province,county and sub-county
+
+
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -12,13 +17,13 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Loading necessary library
 
 ```{r}
-library(haven)
-library (survey)
-library(ggplot2)
-library(dplyr)
-library(survey)
-library(rnaturalearthdata)
-library(tidyverse)
+library(haven)       # For reading Stata (.dta) files
+library(survey)      # For complex survey analysis
+library(ggplot2)     # For data visualization
+library(dplyr)       # For data manipulation
+library(sf)          # For spatial data handling
+library(tidyverse)   # For general data wrangling
+library(rnaturalearthdata) # For map data
 
 
 ```
@@ -34,11 +39,12 @@ head (data)
 ## Creating the data subset with relevant variables
 
 ```{r}
-# All the relevant variables for the analysis has been included in the data subset
+# Select key variables for cancer screening analysis
 relevant_vars <- c("v005", "v021", "v022", "v023", "v024", "v012", "v106", "v130", "v131", 
                    "v190", "v437", "v438", "v445", "v155", "v501", "v463z", "v716", 
                    "v025","v484a","v484b","s1102c","s1103a","s1103b","s1105a","s1105b","v001")
 
+# Creating human-readable variable names
 variable_labels <- c(
   "v001" = "Cluster_Number",
   "v005" = "Sample_Weight",
@@ -69,7 +75,7 @@ variable_labels <- c(
 
 relevant_vars <- names(variable_labels)
 
-# Select only relevant variables
+# Select only relevant variables and rename them
 data_subset <- data %>%
   select(all_of(relevant_vars))
 
@@ -79,40 +85,7 @@ colnames(data_subset) <- variable_labels[relevant_vars]
 
 ```
 
-# count NA values
 
-```{r}
-# Function to count NA, 0, and 1 values
-count_values <- function(data, column_name) {
-  data %>%
-    summarise(
-      NA_Count = sum(is.na(.data[[column_name]])),
-      Count_0 = sum(.data[[column_name]] == 0, na.rm = TRUE),
-      Count_1 = sum(.data[[column_name]] == 1, na.rm = TRUE)
-    )
-}
-
-# Count NA, 0, and 1 values for Breast_Cancer_Screening
-breast_screening_counts <- count_values(data_subset, "Breast_Cancer_Screening")
-
-# Count NA, 0, and 1 values for Cervical_Cancer_Screening
-cervical_screening_counts <- count_values(data_subset, "Cervical_Cancer_Screening")
-
-data_subset <- data_subset %>%
-  filter(!(is.na(Breast_Cancer_Screening) & is.na(Cervical_Cancer_Screening)))
-
-
-# Print results
-print("Breast Cancer Screening Counts:")
-print(breast_screening_counts)
-
-print("Cervical Cancer Screening Counts:")
-print(cervical_screening_counts)
-
-
-
-
-```
 
 ```{r}
 
@@ -152,83 +125,46 @@ data_subset <- data_subset %>%
     TRUE ~ NA_character_  # Handle unexpected values
   ))
 
-# Compute total count of 0 and 1 across the entire dataset
-total_count_0 <- sum(data_subset$Breast_Cancer_Screening == 0, na.rm = TRUE)
-total_count_1 <- sum(data_subset$Breast_Cancer_Screening == 1, na.rm = TRUE)
 
-# Count total, 0, and 1 by Age (unchanged)
-age_count <- data_subset %>%
-  group_by(Age) %>%
-  summarise(
-    Total_Count = n(),
-    Proportion = round((Total_Count / nrow(data_subset)) * 100, 2),
-    Count_0 = sum(Breast_Cancer_Screening == 0, na.rm = TRUE),
-    Count_1 = sum(Breast_Cancer_Screening == 1, na.rm = TRUE)
-  ) %>%
-  mutate(
-    Percent_0 = round((Count_0 / Total_Count) * 100, 2),
-    Percent_1 = round((Count_1 / Total_Count) * 100, 2)
-  ) %>%
-  select(Age, Total_Count,Proportion, Count_0, Percent_0, Count_1, Percent_1) %>%
-  ungroup()
 
-# Count total, 0, and 1 by County with corrected proportions
+# Calculate sample sizes by county 
 county_count <- data_subset %>%
   group_by(County) %>%
   summarise(
-    Total_Count = n(),
-    Proportion = round((Total_Count / nrow(data_subset)) * 100, 2),
-    Count_0 = sum(Breast_Cancer_Screening == 0, na.rm = TRUE),
-    Count_1 = sum(Breast_Cancer_Screening == 1, na.rm = TRUE)
+    sample_size = n(),
+    Proportion = round((sample_size / nrow(data_subset)) * 100, 2)
   ) %>%
-  mutate(
-    Percent_0 = round((Count_0 / total_count_0) * 100, 2),  # Corrected proportion
-    Percent_1 = round((Count_1 / total_count_1) * 100, 2)   # Corrected proportion
-  ) %>%
-  select(County, Total_Count,Proportion, Count_0, Percent_0, Count_1, Percent_1) %>%
+  select(County, sample_size) %>%
   ungroup()
 
-# Count total, 0, and 1 by Province with corrected proportions
+# Calculate sample sizes by  province
 province_count <- data_subset %>%
   group_by(Province) %>%
   summarise(
-    Total_Count = n(),
-    Proportion = round((Total_Count / nrow(data_subset)) * 100, 2),
-    Count_0 = sum(Breast_Cancer_Screening == 0, na.rm = TRUE),
-    Count_1 = sum(Breast_Cancer_Screening == 1, na.rm = TRUE)
-  ) %>%
-  mutate(
-    Percent_0 = round((Count_0 / total_count_0) * 100, 2),  # Corrected proportion
-    Percent_1 = round((Count_1 / total_count_1) * 100, 2)   # Corrected proportion
-  ) %>%
-  select(Province, Total_Count,Proportion, Count_0, Percent_0, Count_1, Percent_1) %>%
+    sample_size = n(),
+    Proportion = round((sample_size / nrow(data_subset)) * 100, 2))  %>%
+  select(Province, sample_size) %>%
   ungroup()
 
 
 
-# Print results
-print("Count and Percentage of 0 and 1 by Age:")
-print(age_count)
-
-print("Count and Percentage of 0 and 1 by County:")
+print(province_count)
 print(county_count)
 
-print("Count and Percentage of 0 and 1 by Province:")
-print(province_count)
 
 
 
 
 ```
 
+
+# Survey-weighted screening rates
+
+
 ```{r}
-# Load necessary libraries
 library(survey)
 library(dplyr)
 
-# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
-data_subset <- data_subset %>%
-  mutate(Sample_Weight = Sample_Weight / 1e6)
 
 # Define survey design
 survey_design <- svydesign(
@@ -260,15 +196,13 @@ cat("Standard Error:", round(SE(screening_cervical) * 100, 2), "%\n")
 
 
 ```
+# Screening Rates by Age
 
 ```{r}
 # Load necessary libraries
 library(survey)
 library(dplyr)
 
-# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
-data_subset <- data_subset %>%
-  mutate(Sample_Weight = Sample_Weight / 1e6)
 
 # Define age intervals within `data_subset`
 data_subset <- data_subset %>%
@@ -325,12 +259,9 @@ calculate_screening_by_age_interval("Cervical_Cancer_Screening", "Cervical Cance
 
 ```
 
-# screening rates and CI by province
+# Direct Estimates of Screening Rates and Confidence Interval by Province
 
 ```{r}
-# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
-data_subset <- data_subset %>%
-  mutate(Sample_Weight = Sample_Weight / 1e6)
 
 # Ensure Province is included in the dataset
 data_subset <- data_subset %>%
@@ -389,12 +320,9 @@ calculate_screening_by_province("Cervical_Cancer_Screening", "Cervical Cancer Sc
 
 ```
 
-# screening rates and CI by county
+# Direct Estimates of Screening Rates and Confidence Interval by County
 
 ```{r}
-# Ensure survey weights are properly scaled (DHS weights are usually divided by 1e6)
-data_subset <- data_subset %>%
-  mutate(Sample_Weight = Sample_Weight / 1e6)
 
 # Update survey design to include County
 survey_design <- svydesign(
@@ -439,7 +367,7 @@ calculate_screening_by_county("Cervical_Cancer_Screening", "Cervical Cancer Scre
 
 ```
 
-# subset of women between 30-50
+# Subset of women between 30-50
 
 ```{r}
 data_subset_30_50 <- data_subset %>%
@@ -450,21 +378,14 @@ print("Subset of data for Age 30-50:")
 print(paste("Total number of records in Age 30-50 subset:", nrow(data_subset_30_50)))
 print(head(data_subset_30_50))
 
-# Compute proportion of women by Age within the 30-50 subset
-age_proportion_30_50 <- data_subset_30_50 %>%
-  group_by(Age) %>%
-  summarise(Count = n(), Proportion = round((Count / nrow(data_subset_30_50)) * 100, 2)) %>%
-  ungroup()
 
-# Print proportions
-print("Proportion of Women by Age (30-50):")
-print(age_proportion_30_50)
 
 
 
 ```
 
-# 30-50 by province
+#Direct Estimates of Screening Rates and Confidence Intervals by Province (Women Aged 30–50)
+
 
 ```{r}
 # Update survey design for the subset (Age 30-50)
@@ -476,8 +397,8 @@ survey_design_30_50 <- svydesign(
   nest = TRUE
 )
 
-# Function to calculate weighted screening rate and confidence intervals by province for Age 30-50
 calculate_screening_by_province_30_50 <- function(variable_name, label) {
+  # Calculate weighted mean by province
   screening_by_province <- svyby(
     formula = as.formula(paste("~", variable_name)),
     by = ~Province,
@@ -486,89 +407,1899 @@ calculate_screening_by_province_30_50 <- function(variable_name, label) {
     na.rm = TRUE
   )
 
-  # Extract confidence intervals
+  # Confidence intervals
   ci_values <- confint(screening_by_province) * 100  
 
-  # Format results
+  # Total count per province 
+  province_counts <- data_subset_30_50 %>%
+    group_by(Province) %>%
+    summarise(Total_Count = n()) %>%
+    ungroup()
+
+  # Create final data frame
   screening_results <- data.frame(
     Province = screening_by_province$Province,
     Screening_Rate = round(coef(screening_by_province) * 100, 2),
     CI_Lower = round(ci_values[, 1], 2),
     CI_Upper = round(ci_values[, 2], 2),
     Standard_Error = round(SE(screening_by_province) * 100, 2)
-  )
+  ) %>%
+    left_join(province_counts, by = "Province")  # Merge in counts
 
   # Print results
   print(paste("Weighted Screening Rate by Province for Age 30-50:", label))
   print(screening_results)
+
+  return(screening_results)
 }
 
-# Calculate weighted screening rates by province for Age 30-50
-calculate_screening_by_province_30_50("Breast_Cancer_Screening", "Breast Cancer Screening")
-calculate_screening_by_province_30_50("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+screening_breast <- calculate_screening_by_province_30_50("Breast_Cancer_Screening", "Breast Cancer Screening")
+screening_cervical <- calculate_screening_by_province_30_50("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+
+
+
+```
+# Maps of Direct Estimates and Confidence Interal for Breast and Cervical  Screening by Province
+
+```{r}
+# Load Kenya province shapefile
+
+kenya_province <- st_read("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/Data/output/KEN_adm1.shp")
+
+# Step 1: Manually assign province names to shapefile using FID as index
+province_names <- c(
+  "Nairobi Province",
+  "Central Province",
+  "Coast Province",
+  "Eastern Province",
+  "North Eastern Province",
+  "Nyanza Province",
+  "Rift Valley Province",
+  "Western Province"
+)
+
+# Add clean, lowercase province names to shapefile
+kenya_province <- kenya_province %>%
+  mutate(Province = tolower(trimws(province_names[FID + 1])))
+
+# Step 2: Prepare breast screening data for merge (clean province names)
+breast_screening_province <- screening_breast %>%
+  mutate(Province = tolower(trimws(Province)))
+
+# Step 3: Merge breast screening data with province shapefile
+map_data_province <- kenya_province %>%
+  left_join(breast_screening_province, by = "Province")
+
+# Step 4: Plot breast screening rate by province
+ggplot(data = map_data_province) +
+  geom_sf(aes(fill = Screening_Rate), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "Breast Screening (%)",
+    option = "plasma",
+    na.value = "grey90",
+     breaks = seq(0, 100, by = 10),
+
+  ) +
+  theme_minimal() +
+  labs(title = "Breast Cancer Screening Rate by Province") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
 
 ```
 
-# 30-50 by county
+```{r}
+
+# Step 5: Prepare cervical screening data (clean + calculate CI width)
+screening_cervical <- screening_cervical %>%
+  mutate(
+    Province = tolower(trimws(Province)),
+    CI_Width = CI_Upper - CI_Lower
+  )
+
+# Reassign province names to match the cervical screening data
+kenya_province <- kenya_province %>%
+  mutate(Province = tolower(trimws(province_names[FID + 1])))
+
+# Step 6: Merge cervical CI widths with province shapefile
+map_cervical_ci_width <- kenya_province %>%
+  left_join(screening_cervical, by = "Province")
+
+# Step 7: Determine color scale limits
+upper_limit <- ceiling(max(map_cervical_ci_width$CI_Width, na.rm = TRUE) / 5) * 5
+break_interval <- ifelse(upper_limit <= 20, 5,10)
+
+# Step 8: Plot cervical CI width map
+ggplot(map_cervical_ci_width) +
+  geom_sf(aes(fill = CI_Width), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    na.value = "grey90",
+    breaks = seq(0, upper_limit, by = break_interval),
+    limits = c(0, upper_limit)
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width for Cervical Cancer Screening by Province") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
 
 ```{r}
-# Update survey design for the subset (Age 30-50)
+# Step 9: Merge cervical screening rates with shapefile for map
+cervical_screening_province <- screening_cervical %>%
+  mutate(Province = tolower(trimws(Province)))
+
+# Step 10: Plot cervical screening rate by province
+map_data_cervical <- kenya_province %>%
+  left_join(cervical_screening_province, by = "Province")
+
+ggplot(data = map_data_cervical) +
+  geom_sf(aes(fill = Screening_Rate), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "Cervical Screening (%)",
+    option = "plasma",
+    breaks = seq(0, 100, by = 10),  # 10-unit scale
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Cervical Cancer Screening Rate by Province") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+
+```{r}
+
+# Step 11: Prepare breast screening CI width by province
+breast_screening_province <- screening_breast %>%
+  mutate(
+    Province = tolower(trimws(Province)),
+    CI_Width = CI_Upper - CI_Lower
+  )
+
+# Step 12: Merge with shapefile
+map_data_breast_ci <- kenya_province %>%
+  left_join(breast_screening_province, by = "Province")
+
+
+# Step 13: Determine scale for CI width
+upper_limit <- ceiling(max(map_data_breast_ci$CI_Width, na.rm = TRUE) / 5) * 5
+break_interval <- ifelse(upper_limit <= 20, 5, 10)
+
+# Step 14: Plot CI width for breast cancer screening
+ggplot(map_data_breast_ci) +
+  geom_sf(aes(fill = CI_Width), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    na.value = "grey90",
+    breaks = seq(0, upper_limit, by = break_interval),
+    limits = c(0, upper_limit)
+  ) +
+  theme_minimal() +
+  labs(title ="Confidence Interval Width for Breast Cancer Screening by Province") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+#Direct Estimates of Screening Rates and Confidence Intervals by County (Women Aged 30–50)
+
+```{r}
+
+# Step 1: Set up survey design for women aged 30–50
 survey_design_30_50 <- svydesign(
   id = ~Cluster_Number, 
   strata = ~Sample_Strata, 
   weights = ~Sample_Weight, 
-  data = data_subset_30_50,  
+  data = data_subset %>% filter(Age >= 30 & Age <= 50),  
   nest = TRUE
 )
 
-# Ensure binary 0/1 values and remove NA values for screening variables
-data_subset_30_50 <- data_subset_30_50 %>%
-  mutate(
-    Breast_Cancer_Screening = ifelse(Breast_Cancer_Screening %in% c(0, 1), Breast_Cancer_Screening, NA),
-    Cervical_Cancer_Screening = ifelse(Cervical_Cancer_Screening %in% c(0, 1), Cervical_Cancer_Screening, NA)
-  ) %>%
-  drop_na(Breast_Cancer_Screening, Cervical_Cancer_Screening)  # Remove rows with NA in screening variables
+# Step 2: Function to calculate weighted screening estimates by county
+calculate_screening_by_county <- function(variable_name, label) {
+  screening_by_county <- svyby(
+    formula = as.formula(paste("~", variable_name)),
+    by = ~County,
+    design = survey_design_30_50,
+    FUN = svymean,
+    na.rm = TRUE
+  )
 
-# Function to calculate weighted screening rate and confidence intervals by county for Age 30-50
-calculate_screening_by_county_30_50 <- function(variable_name, label) {
-  unique_counties <- unique(data_subset_30_50$County)  # Get all unique counties
-  results_list <- list()  # Store results
+  ci_values <- confint(screening_by_county) * 100  
 
-  for (county in unique_counties) {
-    # Subset survey design for the specific county
-    county_design <- subset(survey_design_30_50, County == county)
-
-    # Skip county if it has insufficient data (to prevent errors)
-    if (nrow(county_design$variables) == 0) next  
-
-    # Construct formula dynamically
-    formula_var <- as.formula(paste("~", variable_name))
-
-    # Calculate screening rate and CI using svyciprop()
-    screening_estimate <- svyciprop(formula_var, design = county_design, method = "logit", level = 0.95)
-
-    # Store results in a data frame
-    results_list[[county]] <- data.frame(
-      County = county,
-      Screening_Rate = round(coef(screening_estimate) * 100, 2),
-      CI_Lower = round(confint(screening_estimate)[1] * 100, 2),
-      CI_Upper = round(confint(screening_estimate)[2] * 100, 2),
-      Standard_Error = round(SE(screening_estimate) * 100, 2)
-    )
-  }
-
-  # Combine all county results
-  screening_results <- do.call(rbind, results_list)
+  screening_results <- data.frame(
+    County = screening_by_county$County,
+    Screening_Rate = round(coef(screening_by_county) * 100, 2),
+    CI_Lower = round(ci_values[, 1], 2),
+    CI_Upper = round(ci_values[, 2], 2),
+    Standard_Error = round(SE(screening_by_county) * 100, 2)
+  )
 
   # Print results
-  print(paste("Weighted Screening Rate by County for Age 30-50:", label))
+  print(paste("Weighted Screening Rate by County for", label))
   print(screening_results)
 }
 
-# Calculate weighted screening rates by county for Age 30-50
-calculate_screening_by_county_30_50("Breast_Cancer_Screening", "Breast Cancer Screening")
-calculate_screening_by_county_30_50("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+# Step 3: Apply function for breast and cervical screening
+breast_screening_county <- calculate_screening_by_county("Breast_Cancer_Screening", "Breast Cancer Screening")
+cervical_screening_county <- calculate_screening_by_county("Cervical_Cancer_Screening", "Cervical Cancer Screening")
 
+
+
+```
+
+
+# Maps of Direct Estimates and Confidence Interval Width for Breast and Cervical Screening by County
+
+
+```{r}
+
+library(dplyr)
+
+# 1.Load and prepare county shapefile
+kenya_counties <- st_read("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/Data/ken_adm_iebc_20191031_shp (1)/ken_admbnda_adm1_iebc_20191031.shp")  
+
+kenya_counties <- kenya_counties %>%
+  rename(County = ADM1_EN) %>%
+  mutate(County = tolower(trimws(County)))
+
+# Clean breast screening data
+breast_screening_county <- breast_screening_county  %>%
+  mutate(County = tolower(trimws(County)))
+
+# 2.Merge breast screening data with county shapefile
+map_data <- kenya_counties %>%
+  left_join(breast_screening_county, by = "County")
+
+
+# 3.Plot map of breast screening rates
+ggplot(data = map_data) +
+  geom_sf(aes(fill = Screening_Rate), color = "white", size = 0.2) +
+  scale_fill_viridis_c(option = "C", na.value = "grey90", name = "Breast Screening (%)") +
+  theme_minimal() +
+  labs(
+    title = "Breast Cancer Screening Rate by County",
+  )+
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),       # ← hides degree labels
+    axis.ticks = element_blank(),      # ← hides tick marks
+    axis.title = element_blank()       # ← removes axis titles
+  )
+
+```
+
+```{r}
+
+# 4.Clean cervical data and cap screening rate at 40%
+cervical_screening_county <- cervical_screening_county %>%
+  mutate(County = tolower(trimws(County)))
+
+# Merge and cap screening rate at 40%
+map_cervical <- kenya_counties %>%
+  left_join(cervical_screening_county, by = "County") %>%
+  mutate(Screening_Rate = pmin(Screening_Rate, 40))  # Cap at 40%
+   
+# 5.Plot map
+ggplot(data = map_cervical) +
+  geom_sf(aes(fill = Screening_Rate), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    option = "C",
+    name = "Cervical Screening (%)",
+    na.value = "grey90",
+    breaks = seq(0, 160, by = 10) # adjust range if needed
+  ) +
+  theme_minimal() +
+  labs(title = "Cervical Cancer Screening Rate by County") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  )
+
+
+
+```
+
+
+
+
+```{r}
+
+# 6. Calculate CI width for breast screening 
+breast_screening_county <- breast_screening_county %>%
+  mutate(
+    County = tolower(trimws(County)),
+    CI_Width = CI_Upper - CI_Lower
+  )
+kenya_counties <- kenya_counties %>%
+  mutate(County = tolower(trimws(County)))
+
+# 7.Merge with shapefile and cap CI width
+map_breast_ci <- kenya_counties %>%
+  left_join(breast_screening_county, by = "County")
+
+#8. Plot CI width map
+map_breast_ci <- map_breast_ci %>%
+  mutate(CI_Width = pmin(CI_Width, 40))  # cap at 40%
+
+ggplot(data = map_breast_ci) +
+  geom_sf(aes(fill = CI_Width), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "C",
+    na.value = "grey90",
+    limits = c(0, 40),
+    breaks = seq(0, 40, by = 10)
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Breast Cancer Screening by County") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  )
+
+
+
+
+
+
+
+```
+
+
+```{r}
+
+# 9.Reuse map_breast_ci object for cervical map (ensure it’s updated with cervical data before running)
+map_breast_ci <- map_breast_ci %>%
+  mutate(CI_Width = pmin(CI_Width, 40))  # cap at 40%
+
+# 10.Plot CI width for cervical screening
+ggplot(data = map_breast_ci) +
+  geom_sf(aes(fill = CI_Width), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "C",
+    na.value = "grey90",
+    limits = c(0, 40),
+    breaks = seq(0, 40, by = 10)
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Cervical Cancer Screening by County") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  )
+
+
+
+```
+
+# Clusters
+
+
+```{r}
+#1. Load GPS Cluster Data
+
+
+library(sf)
+library(dplyr)
+
+# Read the GPS cluster shapefile from DHS 2022
+gps_clusters <- st_read("Data/2022 GPS data/KEGE8AFL/KEGE8AFL.shp") 
+
+
+# Preview the data structure
+head(gps_clusters)
+
+  
+```
+
+
+```{r}
+
+# 2. Prepare and Merge Survey Data with GPS Clusters
+
+
+# Rename column in survey data to match cluster ID column in GPS data
+data_subset <- data_subset_30_50 %>%
+  rename(DHSCLUST = Cluster_Number)
+
+# Merge survey data and GPS shapefile by DHS cluster ID
+merged_data <-merge(data_subset,gps_clusters, by = "DHSCLUST",all=TRUE)
+
+# Convert the merged dataset into a spatial object with GPS CRS
+merged_data_sf <- st_as_sf(merged_data, crs = st_crs(gps_clusters))
+
+
+
+```
+
+
+```{r}
+
+#3. Read and Inspect Subcounty Boundary Shapefile
+
+# Load Kenya sub-county boundaries shapefile
+kenya_subcounties <-  st_read("C:\\Users\\Owner\\Downloads\\ke_subcounty\\ke_subcounty.shp")
+
+# View first few rows of the shapefile
+head(kenya_subcounties)
+
+
+
+```
+
+```{r}
+
+# 4.Spatial Join: Assign Subcounty Info to Each Cluster
+
+
+# Ensure same CRS
+kenya_subcounties <- st_transform(kenya_subcounties, crs = st_crs(merged_data_sf))
+
+# Perform spatial join to assign subcounty attributes to each survey cluster
+merged_with_subcounty <- st_join(merged_data_sf, kenya_subcounties, left=TRUE)
+
+# Keep only relevant columns
+merged_with_subcounty <- merged_with_subcounty %>%select(DHSCLUST, Sample_Weight,Sample_Strata,Stratification,Age,Province,Literacy,Residence,subcounty,county,Breast_Cancer_Screening,Cervical_Cancer_Screening,DHSYEAR)
+
+
+# Preview the final merged dataset
+head(merged_with_subcounty)
+
+# Rename back for consistency with survey design function
+merged_with_subcounty <- merged_with_subcounty %>% rename(Cluster_Number = DHSCLUST)
+
+
+```
+
+
+
+```{r}
+#5.Generate Subcounty Summary Table
+
+library(dplyr)
+
+# Create summary: number of unique clusters and individuals per subcounty
+subcounty_summary <- merged_with_subcounty %>%
+  st_drop_geometry() %>%
+  group_by(subcounty) %>%
+  summarise(
+    Clusters = n_distinct(Cluster_Number),
+    Sample_Size = n()
+  ) %>%
+  arrange(desc(Sample_Size))  # Optional: sort by sample size
+
+# Print summary table
+print(subcounty_summary)
+
+# Summary statistics of the table
+summary(subcounty_summary)
+```
+
+
+```{r}
+#1. Clean Subcounty Names and Count Sample Sizes
+
+merged_with_subcounty <- merged_with_subcounty %>%  mutate(subcounty = str_squish(str_replace(subcounty, "Sub County", "")))
+
+
+# Count number of respondents per subcounty
+subcounty_counts <- merged_with_subcounty %>%
+  group_by(subcounty) %>%  # assuming NAME_2 is the subcounty column
+  summarise(
+    Total_Count = n()
+  ) %>%
+  ungroup()%>%
+  arrange(desc(Total_Count))
+
+# View the results
+print(subcounty_counts)
+
+summary(subcounty_counts)
+
+
+```
+
+
+
+# Direct Estimates by Subcounty
+
+```{r}
+
+# Remove missing weights
+merged_with_subcounty <- merged_with_subcounty %>%
+  filter(!is.na(Sample_Weight))
+
+# Define the survey design
+survey_design <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = merged_with_subcounty,  
+  nest = TRUE
+)
+
+# Function to calculate weighted screening by subcounty
+calculate_screening_by_subcounty <- function(variable_name, label) {
+  screening <- svyby(
+    formula = as.formula(paste0("~", variable_name)),
+    by = ~subcounty,
+    design = survey_design,
+    FUN = svymean,
+    na.rm = TRUE
+  )
+
+  ci <- confint(screening) * 100
+  screening_df <- data.frame(
+    Subcounty = screening$subcounty,
+    Screening_Rate = round(coef(screening) * 100, 2),
+    CI_Lower = round(ci[,1], 2),
+    CI_Upper = round(ci[,2], 2),
+    Standard_Error = round(SE(screening) * 100, 2)
+  )
+
+  cat(paste0("\n Weighted Screening Rate by Subcounty for ", label, ":\n"))
+  print(screening_df)
+}
+
+# Run for both variables
+breast_direct_subcounty <- calculate_screening_by_subcounty("Breast_Cancer_Screening", "Breast Cancer Screening")
+cervical_direct_subcounty <- calculate_screening_by_subcounty("Cervical_Cancer_Screening", "Cervical Cancer Screening")
+
+```
+
+
+#3. Maps of Direct Estimates and Confidence Interval for Breast Cancer Screening by Sub County
+
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(stringr)
+
+# Clean shapefile and estimate names
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = str_replace_all(subcounty, "Sub County", ""),
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))
+  )
+
+#2. Merge for mapping
+breast_direct_subcounty <- breast_direct_subcounty %>%
+  mutate(Subcounty_clean = str_to_title(str_squish(Subcounty)))
+
+map_breast_direct <- kenya_subcounties %>%
+  left_join(breast_direct_subcounty, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# Project for better rendering
+map_breast_direct_proj <- st_transform(map_breast_direct, crs = 32637)
+
+# 3.Plot
+ggplot(map_breast_direct_proj) +
+  geom_sf(aes(fill = Screening_Rate), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Breast Screening (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 80, by = 20),
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Direct Estimates of Breast Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+```{r}
+
+# 4.Calculate CI Width and clean subcounty names
+breast_direct_subcounty <- breast_direct_subcounty %>%
+  mutate(
+    CI_Width = CI_Upper - CI_Lower,
+    Subcounty_clean = str_to_title(str_squish(Subcounty))
+  )
+
+# 5.Join the CI width data to the shapefile
+map_breast_ciwidth <- kenya_subcounties %>%
+  left_join(breast_direct_subcounty, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# Project the map for better visualization
+map_breast_ciwidth_proj <- st_transform(map_breast_ciwidth, crs = 32637)
+
+# 6.Plot the CI width map for breast cancer screening
+ggplot(map_breast_ciwidth_proj) +
+  geom_sf(aes(fill = CI_Width), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 400, by = 40),  # adjust as needed
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Direct Estimates for \n Breast Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+```{r}
+
+# 7.Calculate CI Width and clean subcounty names
+cervical_direct_subcounty <- cervical_direct_subcounty %>%
+  mutate(
+    CI_Width = CI_Upper - CI_Lower,
+    Subcounty_clean = str_to_title(str_squish(Subcounty))
+  )
+
+#8.Join CI data to shapefile
+map_cervical_ciwidth <- kenya_subcounties %>%
+  left_join(cervical_direct_subcounty, by = c("subcounty_clean" = "Subcounty_clean"))
+
+#9. Project the map
+map_cervical_ciwidth_proj <- st_transform(map_cervical_ciwidth, crs = 32637)
+
+#10. Plot the CI width map for cervical cancer screening
+ggplot(map_cervical_ciwidth_proj) +
+  geom_sf(aes(fill = CI_Width), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 600, by = 60),  # adjust if your range differs
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Direct Estimates for \n Cervical Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+```
+
+
+```{r}
+
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(stringr)
+
+# 11. Clean subcounty names in the shapefile
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = str_replace_all(subcounty, "Sub County", ""),  # Remove redundant suffix
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))      # Standardize formatting
+  )
+
+# 12. Clean and prepare direct estimates for breast cancer screening
+breast_direct_subcounty <- breast_direct_subcounty %>%
+  mutate(Subcounty_clean = str_to_title(str_squish(Subcounty)))
+
+# 13. Merge direct estimates with spatial shapefile by subcounty
+map_breast_direct <- kenya_subcounties %>%
+  left_join(breast_direct_subcounty, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# 14. Project the shapefile for proper spatial rendering
+map_breast_direct_proj <- st_transform(map_breast_direct, crs = 32637)
+
+# 15. Plot map of direct breast screening estimates
+ggplot(map_breast_direct_proj) +
+  geom_sf(aes(fill = Screening_Rate), color = "white", size = 0.1) +  # Color by screening rate
+  scale_fill_viridis_c(
+    name = "Breast Screening (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 80, by = 20),  # Adjust based on range of rates
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Direct Estimates of Breast Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+
+# Fay Harriot Model 
+
+```{r}
+# 1. Direct Estimates
+# Load required packages
+library(survey)
+library(sae)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(haven)
+
+
+# Filter for women aged 30-49
+survey_data <- merged_with_subcounty %>% 
+  filter(Age >= 30 & Age <= 49)
+
+# Ensure relevant variables are numeric
+survey_data <- survey_data %>%
+  mutate(
+    Cluster_Number = as.numeric(as_factor(Cluster_Number)),
+    Sample_Strata = as.numeric(as_factor(Sample_Strata)),
+    Sample_Weight = as.numeric(Sample_Weight)  # Often already numeric, but ensures conversion
+  )
+
+# Create a survey design object for variance estimation
+survey_design <- svydesign(
+  id = ~Cluster_Number, 
+  strata = ~Sample_Strata, 
+  weights = ~Sample_Weight, 
+  data = survey_data,
+  nest = TRUE,
+   na.rm = TRUE 
+)
+
+# Calculate direct estimates and variances for cervical screening
+direct_estimates_cs <- svyby(
+  ~Cervical_Cancer_Screening, 
+  ~subcounty, 
+  design = survey_design,
+  vartype = "var",        
+  FUN = svymean,
+  keep.var = TRUE,
+   na.rm = TRUE 
+)
+# Calculate direct estimates and variances for breast screening
+direct_estimates_bs <- svyby(
+  ~Breast_Cancer_Screening, 
+  ~subcounty, 
+  design = survey_design,
+  FUN = svymean,
+  vartype = "var",        
+  keep.var = TRUE,
+   na.rm = TRUE 
+)
+
+
+# Create dataframes for FH model input
+Fay_data <- data.frame(
+  Subcounty_id = direct_estimates_cs$subcounty,
+  
+  direct_estimate_cs = direct_estimates_cs$Cervical_Cancer_Screening,
+  var_direct_cs = direct_estimates_cs$var,
+  
+  stringsAsFactors = FALSE
+)
+
+Fay_data_bs <- data.frame(
+  Subcounty_id = direct_estimates_bs$subcounty,
+  direct_estimate_bs = direct_estimates_bs$Breast_Cancer_Screening,
+  var_direct_bs = direct_estimates_bs$var,
+  stringsAsFactors = FALSE
+)
+# Remove rows with missing values
+
+Fay_data <- Fay_data[complete.cases(Fay_data), ]
+
+Fay_data <- Fay_data %>%
+  mutate(
+    direct_estimate_cs = case_when(
+      direct_estimate_cs <= 0 ~ 0.005,
+      direct_estimate_cs >= 1 ~ 0.995,
+      TRUE ~ direct_estimate_cs
+    )
+  )
+
+print(Fay_data_bs)
+```
+
+
+
+
+
+```{r}
+#2. Clean Subcounty Names and Merge with Census Data
+
+
+library(readxl)
+library(dplyr)
+library(stringr)
+
+# Load and clean census data
+census_data <- read_excel("C:/Users/Owner/OneDrive/Desktop/HDS Project/MDX-Research-Project/kenya_census.xlsx") %>%
+  rename(Subcounty_original = Subcounty) %>%
+  mutate(Subcounty_clean = str_squish(str_to_title(Subcounty_original))) 
+
+
+# Standardize subcounty names in FH data
+Fay_data <- Fay_data %>%
+  mutate(Subcounty_clean = str_squish(str_to_title(Subcounty_id))) 
+
+
+manual_map <- c(
+  "Banissa" = "Banisa",
+  "Kipkelion East" = "Kericho East",
+  "Kipkelion West" = "Kipkelion",
+  "Sigowet/Soin" = "Soin Sigowet",
+  "Ainamoi" = "Londiani",
+  "Alego Usonga" = "Siaya",
+  "Kabuchai" = "Bungoma West",
+  "Kanduyi" = "Bungoma South",
+  "Sirisia" = "Bungoma North",
+  "Webuye East" = "Bungoma East",
+  "Matayos" = "Busia",
+  "Manyatta" = "Embu East", # pick one (Embu West or East) based on your data needs
+  "Runyenjes" = "Embu North",
+  "Mbita" = "Suba South",
+  "Kabondo Kasipul" = "Rachuonyo East",
+  "Suba" = "Suba South", # or "Suba North" – pick one
+  "Kajiado East" = "Isinya", # or "Mashuuru"
+  "Ikolomani" = "Kakamega South",
+  "Lurambi" = "Kakamega Central",
+  "Malava" = "Kakamega North",
+  "Shinyalu" = "Kakamega East",
+  "Kirinyaga South" = "Mwea East",
+  "Bobasi" = "Nyamache", # or "Etago"
+  "Bonchari" = "Kenyenya", # or "Kisii South"
+  "Nyaribari Chache" = "Marani",
+  "Kibwezi West" = "Makindu",
+  "South Mugirango" = "Gucha",
+  "Kibwezi East" = "Makindu",
+  "Kaiti" = "Kathonzweni", # or "Nzaui"
+  "Kilome" = "Muka",
+  "KILUNGU" = "Muka",
+  "Mwingi North" = "Kyuso",
+  "Mwingi West" = "Migwani",
+  "Kitui South" = "Mutomo",
+  "Kitui Rural" = "Kisasi",
+  "Kitui East" = "Mutitu North",
+  "Laisamis" = "Loiyangalani", # or "Sololo"
+  "Saku" = "Marsabit Central",
+  "Dagoretti North" = "Dagoretti",
+  "Dagoretti South" = "Dagoretti",
+  "Embakasi Central" = "Embakasi",
+  "Embakasi North" = "Embakasi",
+  "Embakasi East" = "Embakasi",
+  "Embakasi South" = "Embakasi",
+  "Embakasi West" = "Embakasi",
+  "Roysambu" = "Kasarani",
+  "Ruaraka" = "Njiru",
+  "Ndaragwa" = "Nyandarua North",
+  "Oljoroorok" = "Nyandarua West",
+  "Olkalou" = "Nyandarua Central",
+  "Wundanyi" = "Taita",
+  "Garsen" = "Tana Delta",
+  "Bura" = "Tana North",
+  "Galole" = "Tana River",
+  "Chuka" = "Meru South",
+  "Mwimbi" = "Maara",
+  "Muthambi" = "Maara",
+  "Saboti" = "Trans Nzoia West",
+  "Cherangany" = "Trans Nzoia East"
+)
+
+# Apply manual mapping to correct mismatches between DHS and census names
+Fay_data <- Fay_data %>%
+  mutate(Subcounty_clean = ifelse(Subcounty_clean  %in% names(manual_map),
+                                  manual_map[Subcounty_clean ],
+                                  Subcounty_clean))
+
+# Further clean names by removing "Sub-County" suffix
+
+Fay_data <- Fay_data %>%
+  mutate(Subcounty_clean = str_remove_all(Subcounty_clean, regex("(?i)Sub- County|Sub-County|town"))) %>%
+  mutate(Subcounty_clean = str_squish(str_to_title(Subcounty_clean)))
+
+# Keep only unique subcounties before merge
+census_data <- census_data %>%
+  distinct(Subcounty_clean, .keep_all = TRUE) %>%
+  mutate(Subcounty_clean = str_squish(str_to_title(Subcounty_clean)))
+
+Fay_data <- Fay_data %>%
+  distinct(Subcounty_clean, .keep_all = TRUE)
+
+
+# Merge census covariates into FH dataset
+Fay_data <- left_join(Fay_data, census_data, by = "Subcounty_clean")
+
+```
+
+```{r}
+
+# Check result
+print(Fay_data)
+
+
+
+```
+
+
+
+```{r}
+
+#3.Prepare Fay-Herriot Inputs and Fit Cervical Models
+
+library(dplyr)
+library(sae)
+
+# Calculate education proportions and logit transforms for cervical screening
+Fay_data_cs <- Fay_data %>%
+  mutate(
+    Total = as.numeric(Total),
+    PrePrimary = as.numeric(PrePrimary),
+    Primary = as.numeric(Primary),
+    `Middle level` = as.numeric(`Middle level`),
+    Secondary = as.numeric(Secondary),
+    University = as.numeric(University),
+
+    Prop_PrePrimary = PrePrimary / Total,
+    Prop_Primary = Primary / Total,
+    Prop_Middle = `Middle level` / Total,
+    Prop_Secondary = Secondary / Total,
+    Prop_University = University / Total,
+
+    logit.cs = qlogis(direct_estimate_cs),
+    logit.var.cs = var_direct_cs / (direct_estimate_cs^2 * (1 - direct_estimate_cs)^2)
+  ) %>%
+  filter(!is.na(Prop_PrePrimary), !is.na(Prop_Primary), !is.na(Prop_Middle),
+         !is.na(Prop_Secondary), !is.na(Prop_University))
+
+# Fit multiple FH models with different combinations of educational covariates
+Fit1 <- mseFH(logit.cs ~ 1, logit.var.cs, data = Fay_data_cs)
+Fit2 <- mseFH(logit.cs ~ Prop_PrePrimary, logit.var.cs, data = Fay_data_cs)
+Fit3 <- mseFH(logit.cs ~ Prop_Primary, logit.var.cs, data = Fay_data_cs)
+Fit4 <- mseFH(logit.cs ~ Prop_Middle, logit.var.cs, data = Fay_data_cs)
+Fit5 <- mseFH(logit.cs ~ Prop_Secondary, logit.var.cs, data = Fay_data_cs)
+Fit6 <- mseFH(logit.cs ~ Prop_University, logit.var.cs, data = Fay_data_cs)
+Fit7 <- mseFH(logit.cs ~ Prop_PrePrimary + Prop_Primary, logit.var.cs, data = Fay_data_cs)
+Fit8 <- mseFH(logit.cs ~ Prop_Middle + Prop_Secondary, logit.var.cs, data = Fay_data_cs)
+Fit9 <- mseFH(logit.cs ~ Prop_Middle + Prop_University, logit.var.cs, data = Fay_data_cs)
+Fit10 <- mseFH(logit.cs ~ Prop_PrePrimary + Prop_Primary + Prop_Middle + Prop_Secondary + Prop_University, logit.var.cs, data = Fay_data_cs)
+
+# 4. Compare Models
+model_comparison_cs <- data.frame(
+  Model = c("Intercept Only", "PrePrimary", "Primary", "Middle level", "Secondary", "University",
+            "PrePrimary+Primary", "Middle+Secondary", "Middle+University", "PrePrimary + Primary + Middle + Secondary + University"),
+  AIC = c(Fit1$est$fit$goodness["AIC"],
+          Fit2$est$fit$goodness["AIC"],
+          Fit3$est$fit$goodness["AIC"],
+          Fit4$est$fit$goodness["AIC"],
+          Fit5$est$fit$goodness["AIC"],
+          Fit6$est$fit$goodness["AIC"],
+          Fit7$est$fit$goodness["AIC"],
+          Fit8$est$fit$goodness["AIC"],
+          Fit9$est$fit$goodness["AIC"],
+          Fit10$est$fit$goodness["AIC"]),
+  BIC = c(Fit1$est$fit$goodness["BIC"],
+          Fit2$est$fit$goodness["BIC"],
+          Fit3$est$fit$goodness["BIC"],
+          Fit4$est$fit$goodness["BIC"],
+          Fit5$est$fit$goodness["BIC"],
+          Fit6$est$fit$goodness["BIC"],
+          Fit7$est$fit$goodness["BIC"],
+          Fit8$est$fit$goodness["BIC"],
+          Fit9$est$fit$goodness["BIC"],
+          Fit10$est$fit$goodness["BIC"]),
+  LogLikelihood = c(Fit1$est$fit$goodness["loglike"],
+                    Fit2$est$fit$goodness["loglike"],
+                    Fit3$est$fit$goodness["loglike"],
+                    Fit4$est$fit$goodness["loglike"],
+                    Fit5$est$fit$goodness["loglike"],
+                    Fit6$est$fit$goodness["loglike"],
+                    Fit7$est$fit$goodness["loglike"],
+                    Fit8$est$fit$goodness["loglike"],
+                    Fit9$est$fit$goodness["loglike"],
+                    Fit10$est$fit$goodness["loglike"]),
+  Sigma2 = c(Fit1$est$fit$refvar,
+             Fit2$est$fit$refvar,
+             Fit3$est$fit$refvar,
+             Fit4$est$fit$refvar,
+             Fit5$est$fit$refvar,
+             Fit6$est$fit$refvar,
+             Fit7$est$fit$refvar,
+             Fit8$est$fit$refvar,
+             Fit9$est$fit$refvar,
+             Fit10$est$fit$refvar)
+)
+# Print the model comparison table
+print(model_comparison_cs)
+
+
+```
+
+
+```{r}
+
+#5. Predict Using Best Model  and Back-Transform
+# Create predictions and calculate 95% CIs
+
+fh_preds_cs <- data.frame(
+  Subcounty_id = Fay_data_cs$Subcounty_id,
+  FH_logit_est = Fit10$est$eblup,
+  FH_var = Fit10$mse
+) %>%
+  mutate(
+    FH_prob_est = plogis(FH_logit_est),
+    FH_lower = plogis(FH_logit_est - 1.96 * sqrt(FH_var)),
+    FH_upper = plogis(FH_logit_est + 1.96 * sqrt(FH_var)),
+    FH_CI_width = FH_upper - FH_lower
+  )
+
+# Merge predictions back into the dataset
+Fay_data_cs <- Fay_data_cs %>%
+  left_join(fh_preds_cs, by = "Subcounty_id")
+
+
+# Preview results
+Fay_data_cs %>%
+  dplyr::select(Subcounty_id, FH_prob_est, FH_lower, FH_upper, FH_CI_width) 
+
+
+```
+
+# Map: Fay-Herriot Estimates for Cervical Screening 
+
+```{r}
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(sf)
+
+# Step 1: Clean subcounty names in shapefile
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = subcounty,
+    subcounty_clean = str_replace_all(subcounty_clean, "Sub County", ""),
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))
+  )
+
+# Step 2: Clean subcounty names in FH cervical estimates
+data_cervical <- Fay_data_cs %>%
+  mutate(
+    Subcounty_clean = str_to_title(str_squish(Subcounty_id))
+  )
+
+# Step 3: Join FH cervical estimates to shapefile
+map_cervical <- kenya_subcounties %>%
+  left_join(data_cervical, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# Step 4: Transform to projected CRS (Kenya = UTM Zone 37N)
+map_cervical_proj <- st_transform(map_cervical, crs = 32637)
+
+# Step 5: Convert FH estimates to percentages
+map_cervical_proj <- map_cervical_proj %>%
+  mutate(
+    FH_prob_est = FH_prob_est * 100,
+    FH_lower = FH_lower * 100,
+    FH_upper = FH_upper * 100
+  )
+
+# Step 6: Plot the map (no axis labels or grid)
+ggplot(map_cervical_proj) +
+  geom_sf(aes(fill = FH_prob_est), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Cervical Screening (%)",
+    option = "plasma",
+    breaks = seq(0, 70, by = 20),
+    direction = 1,
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Fay-Herriot Estimates for Cervical Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+
+```
+
+
+# Map: Fay-Herriot Confidence Interval Width for Cervical Screening 
+
+```{r}
+# Map for Breast Screening Estimates
+library(sf)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+
+# Step 1: Clean subcounty names in shapefile
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = subcounty,
+    subcounty_clean = str_replace_all(subcounty_clean, "Sub County", ""),
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))
+  )
+
+# Step 2: Clean subcounty names in FH cervical estimates
+data_cervical <- Fay_data_cs %>%
+  mutate(
+    Subcounty_clean = str_to_title(str_squish(Subcounty_id))
+  )
+
+# Step 3: Join FH cervical estimates to shapefile
+map_cervical <- kenya_subcounties %>%
+  left_join(data_cervical, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# Step 4: Transform to projected CRS (Kenya = UTM Zone 37N)
+map_cervical_proj <- st_transform(map_cervical, crs = 32637)
+
+# Step 5: Convert CI width to percentage
+map_cervical_proj <- map_cervical_proj %>%
+  mutate(
+    FH_CI_width = FH_CI_width * 100
+  )
+
+# Step 6: Determine legend breaks
+upper_limit <- ceiling(max(map_cervical_proj$FH_CI_width, na.rm = TRUE) / 20) * 20
+breaks_seq <- seq(0, upper_limit, by = 20)
+
+# Step 7: Plot CI width map
+ggplot(map_cervical_proj) +
+  geom_sf(aes(fill = FH_CI_width), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = breaks_seq,
+    limits = c(0, upper_limit),
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Fay-Herriot Estimates for Cervical Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+```
+
+
+# Map: Fay-Herriot Estimates for Cervical Screening (Intercept only)
+
+
+```{r}
+#Step 1.Create predictions for Fit1 
+fh_preds_cs_fit1 <- data.frame(
+  Subcounty_id = Fay_data_cs$Subcounty_id,
+  FH_logit_est_F1 = Fit1$est$eblup,  # Added _F1 suffix
+  FH_var_F1 = Fit1$mse
+) %>%
+  mutate(
+    FH_prob_est_F1 = plogis(FH_logit_est_F1),
+    FH_lower_F1 = plogis(FH_logit_est_F1 - 1.96 * sqrt(FH_var_F1)),
+    FH_upper_F1 = plogis(FH_logit_est_F1 + 1.96 * sqrt(FH_var_F1)),
+    FH_CI_width_F1 = FH_upper_F1 - FH_lower_F1
+  )
+
+#Step 2.Prepare data_cervical_fit1 from Fay_data_cs
+data_cervical_fit1 <- Fay_data_cs %>%
+  mutate(
+    Subcounty_clean = str_to_title(str_squish(Subcounty_id))
+  )
+
+#Step 3. Join to shapefile data
+map_cervical_fit1 <- kenya_subcounties %>%
+  left_join(
+    data_cervical_fit1 %>% 
+      left_join(fh_preds_cs_fit1, by = "Subcounty_id"),
+    by = c("subcounty_clean" = "Subcounty_clean")
+  )
+
+#Step 4.Convert to percentages (using the _F1 suffix)
+map_cervical_fit1_proj <- map_cervical_fit1 %>%
+  st_transform(crs = 32637) %>%
+  mutate(
+    FH_prob_est = FH_prob_est_F1 * 100,
+    FH_lower = FH_lower_F1 * 100,
+    FH_upper = FH_upper_F1 * 100
+  )
+
+# Step 5.Now the plotting code will work
+ggplot(map_cervical_fit1_proj) +
+  geom_sf(aes(fill = FH_prob_est), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Cervical Screening (%)",
+    option = "plasma",
+    breaks = seq(0, 70, by = 20),
+    direction = 1,
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Fay-Herriot Intercept-Only Estimates of Cervical Cancer Screening by Sub-county") +
+  theme(legend.position = "right")+ theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+```
+
+
+# Map: Fay-Herriot Confidence Interval Width for Cervical Screening (Intercept Only)
+
+```{r}
+# Step 1: Clean subcounty names in shapefile
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = subcounty,
+    subcounty_clean = str_replace_all(subcounty_clean, "Sub County", ""),
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))
+  )
+
+# Step 2: Prepare Fay-Herriot prediction output with unique columns
+fh_preds_cs_fit1 <- data.frame(
+  Subcounty_id = Fay_data_cs$Subcounty_id,
+  FH_logit_est_F1 = Fit1$est$eblup,
+  FH_var_F1 = Fit1$mse
+) %>%
+  mutate(
+    FH_prob_est_F1 = plogis(FH_logit_est_F1),
+    FH_lower_F1 = plogis(FH_logit_est_F1 - 1.96 * sqrt(FH_var_F1)),
+    FH_upper_F1 = plogis(FH_logit_est_F1 + 1.96 * sqrt(FH_var_F1)),
+    FH_CI_width_F1 = FH_upper_F1 - FH_lower_F1
+  )
+
+# Step 3: Clean subcounty names in Fay-Herriot data
+data_cervical_fit1 <- Fay_data_cs %>%
+  mutate(
+    Subcounty_clean = str_to_title(str_squish(Subcounty_id))
+  )
+
+# Step 4: Join predictions with shapefile
+map_cervical_fit1 <- kenya_subcounties %>%
+  left_join(
+    data_cervical_fit1 %>%
+      left_join(fh_preds_cs_fit1, by = "Subcounty_id"),
+    by = c("subcounty_clean" = "Subcounty_clean")
+  )
+
+# Step 5: Transform CRS and scale CI width to percentage
+map_cervical_fit1_proj <- map_cervical_fit1 %>%
+  st_transform(crs = 32637) %>%
+  mutate(FH_CI_width = FH_CI_width_F1 * 100)
+
+# Step 6: Plot the CI width
+ggplot(map_cervical_fit1_proj) +
+  geom_sf(aes(fill = FH_CI_width), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    direction = 1,
+    na.value = "grey90",
+    breaks = seq(0, max(map_cervical_fit1_proj$FH_CI_width, na.rm = TRUE), by = 20)
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Fay-Herriot Intercept-Only \n Estimates for Cervical Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+
+
+
+```{r}
+
+library(dplyr)
+
+# Step 1: Prepare data for Fay-Herriot modeling
+
+Fay_data_bs <- Fay_data_bs %>%
+  # Ensure subcounty identifiers match
+  mutate(Subcounty_id = direct_estimates_bs$subcounty) %>%
+  
+  # Join with census covariates from Fay_data
+  left_join(
+    Fay_data %>%  
+      dplyr::select(Subcounty_id, Subcounty_clean, Total, PrePrimary, Primary, 
+                   `Middle level`, Secondary, University),  # Note backticks for space
+    by = "Subcounty_id"
+  ) %>%
+  mutate(
+  # Convert educational counts to numeric
+    across(c(Total, PrePrimary, Primary, `Middle level`, Secondary, University), as.numeric),
+    
+    # Apply bounds to avoid 0/1 extremes in logit transformation
+    direct_estimate_bs = case_when(
+      direct_estimate_bs <= 0 ~ 0.005,
+      direct_estimate_bs >= 1 ~ 0.995,
+      TRUE ~ direct_estimate_bs
+    ),
+    
+    # Calculate proportions for educational levels
+    Prop_PrePrimary = PrePrimary / Total,
+    Prop_Primary = Primary / Total,
+    Prop_Middle = `Middle level` / Total,
+    Prop_Secondary = Secondary / Total,
+    Prop_University = University / Total,
+    
+    # Logit transformations
+    logit.bs = qlogis(direct_estimate_bs),
+    logit.var.bs = var_direct_bs / (direct_estimate_bs^2 * (1 - direct_estimate_bs)^2)
+  ) %>%
+  # Filter out any rows with missing proportion values
+  filter(if_all(starts_with("Prop_"), ~!is.na(.x)))
+
+```
+
+```{r}
+library(dplyr)
+library(sae)
+
+# Step 2: Fit multiple FH models with varying covariate combinations
+Fit_bs1 <- mseFH(logit.bs ~ 1, logit.var.bs, data = Fay_data_bs)
+Fit_bs2 <- mseFH(logit.bs ~ Prop_PrePrimary, logit.var.bs, data = Fay_data_bs)
+Fit_bs3 <- mseFH(logit.bs ~ Prop_Primary, logit.var.bs, data = Fay_data_bs)
+Fit_bs4 <- mseFH(logit.bs ~ Prop_Middle, logit.var.bs, data = Fay_data_bs)
+Fit_bs5 <- mseFH(logit.bs ~ Prop_Secondary, logit.var.bs, data = Fay_data_bs)
+Fit_bs6 <- mseFH(logit.bs ~ Prop_University, logit.var.bs, data = Fay_data_bs)
+Fit_bs7 <- mseFH(logit.bs ~ Prop_PrePrimary + Prop_Primary, logit.var.bs, data = Fay_data_bs)
+Fit_bs8 <- mseFH(logit.bs ~ Prop_Middle + Prop_Secondary, logit.var.bs, data = Fay_data_bs)
+Fit_bs9 <- mseFH(logit.bs ~ Prop_Middle + Prop_University, logit.var.bs, data = Fay_data_bs)
+Fit_bs10 <- mseFH(logit.bs ~ Prop_PrePrimary + Prop_Primary + Prop_Middle + Prop_Secondary + Prop_University, logit.var.bs, data = Fay_data_bs)
+
+
+
+```
+
+
+
+```{r}
+
+
+#Step 3.Model comparison table for Breast Cancer Screening FH models
+model_comparison_bs <- data.frame(
+  Model = c("Intercept Only", "PrePrimary", "Primary", "Middle level", "Secondary", "University",
+            "PrePrimary + Primary", "Middle + Secondary", "Middle + University", 
+            "All Education Covariates"),
+  AIC = c(Fit_bs1$est$fit$goodness["AIC"],
+          Fit_bs2$est$fit$goodness["AIC"],
+          Fit_bs3$est$fit$goodness["AIC"],
+          Fit_bs4$est$fit$goodness["AIC"],
+          Fit_bs5$est$fit$goodness["AIC"],
+          Fit_bs6$est$fit$goodness["AIC"],
+          Fit_bs7$est$fit$goodness["AIC"],
+          Fit_bs8$est$fit$goodness["AIC"],
+          Fit_bs9$est$fit$goodness["AIC"],
+          Fit_bs10$est$fit$goodness["AIC"]),
+  BIC = c(Fit_bs1$est$fit$goodness["BIC"],
+          Fit_bs2$est$fit$goodness["BIC"],
+          Fit_bs3$est$fit$goodness["BIC"],
+          Fit_bs4$est$fit$goodness["BIC"],
+          Fit_bs5$est$fit$goodness["BIC"],
+          Fit_bs6$est$fit$goodness["BIC"],
+          Fit_bs7$est$fit$goodness["BIC"],
+          Fit_bs8$est$fit$goodness["BIC"],
+          Fit_bs9$est$fit$goodness["BIC"],
+          Fit_bs10$est$fit$goodness["BIC"]),
+  LogLikelihood = c(Fit_bs1$est$fit$goodness["loglike"],
+                    Fit_bs2$est$fit$goodness["loglike"],
+                    Fit_bs3$est$fit$goodness["loglike"],
+                    Fit_bs4$est$fit$goodness["loglike"],
+                    Fit_bs5$est$fit$goodness["loglike"],
+                    Fit_bs6$est$fit$goodness["loglike"],
+                    Fit_bs7$est$fit$goodness["loglike"],
+                    Fit_bs8$est$fit$goodness["loglike"],
+                    Fit_bs9$est$fit$goodness["loglike"],
+                    Fit_bs10$est$fit$goodness["loglike"]),
+  Sigma2 = c(Fit_bs1$est$fit$refvar,
+             Fit_bs2$est$fit$refvar,
+             Fit_bs3$est$fit$refvar,
+             Fit_bs4$est$fit$refvar,
+             Fit_bs5$est$fit$refvar,
+             Fit_bs6$est$fit$refvar,
+             Fit_bs7$est$fit$refvar,
+             Fit_bs8$est$fit$refvar,
+             Fit_bs9$est$fit$refvar,
+             Fit_bs10$est$fit$refvar)
+)
+
+# Print the table
+print(model_comparison_bs)
+
+
+
+
+
+
+```
+
+
+```{r}
+# Step 4: Predict FH estimates using best model 
+
+Fay_data_bs <- Fay_data_bs %>%
+  mutate(
+    FH_logit_est = Fit_bs10$est$eblup,
+    FH_var = Fit_bs10$mse,
+    FH_prob_est = plogis(FH_logit_est),
+    FH_lower = plogis(FH_logit_est - 1.96 * sqrt(FH_var)),
+    FH_upper = plogis(FH_logit_est + 1.96 * sqrt(FH_var)),
+    FH_CI_width = FH_upper - FH_lower
+  )
+
+
+
+
+```
+
+
+
+```{r}
+# Step 5: Prepare spatial data for mapping
+# Clean subcounty names in shapefile
+
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = subcounty,
+    subcounty_clean = str_replace_all(subcounty_clean, "Sub County", ""),
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))
+  )
+
+# Join predictions to shapefile
+data_breast <- Fay_data_bs %>%
+  mutate(Subcounty_clean = str_to_title(str_squish(Subcounty_id)))
+
+# Join to shapefile
+map_breast <- kenya_subcounties %>%
+  left_join(data_breast, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# Project CRS
+map_breast_proj <- st_transform(map_breast, crs = 32637)
+
+# Convert probabilities to percentages for mapping
+map_breast_proj <- map_breast_proj %>%
+  mutate(
+    FH_prob_est = FH_prob_est * 100,
+    FH_lower = FH_lower * 100,
+    FH_upper = FH_upper * 100
+  )
+
+
+
+# Step 6: Plot FH estimated breast screening rates
+ggplot(map_breast_proj) +
+  geom_sf(aes(fill = FH_prob_est), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Breast Screening (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 80, by = 20),
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Fay-Herriot Estimates of Breast Cancer Screening Rates by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+
+```
+
+```{r}
+
+Fay_data_bs <- Fay_data_bs %>%
+  mutate(
+    FH_logit_est = Fit_bs10$est$eblup,
+    FH_var = Fit_bs10$mse,
+    FH_prob_est = plogis(FH_logit_est),
+    FH_lower = plogis(FH_logit_est - 1.96 * sqrt(FH_var)),
+    FH_upper = plogis(FH_logit_est + 1.96 * sqrt(FH_var)),
+    FH_CI_width = FH_upper - FH_lower
+  )
+# Step 7: Plot CI width map for best model
+map_breast_proj <- map_breast_proj %>%
+  mutate(FH_CI_width = FH_CI_width * 100)
+
+# Plot CI Width
+ggplot(map_breast_proj) +
+  geom_sf(aes(fill = FH_CI_width), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 80, by = 20),  # adjust as needed based on max width
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Fay-Herriot Estimates\nfor Breast Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+
+  #random
+
+```{r}
+# Step 8: Create predictions from intercept-only model for comparison
+Fay_data_bs1 <- Fay_data_bs %>%
+  mutate(
+    FH_logit_est = Fit_bs1$est$eblup,
+    FH_var = Fit_bs10$mse,
+    FH_prob_est = plogis(FH_logit_est),
+    FH_lower = plogis(FH_logit_est - 1.96 * sqrt(FH_var)),
+    FH_upper = plogis(FH_logit_est + 1.96 * sqrt(FH_var)),
+    FH_CI_width = FH_upper - FH_lower
+  )
+
+
+
+
+
+```
+
+```{r}
+
+
+#1. Clean subcounty names in shapefile
+kenya_subcounties <- kenya_subcounties %>%
+  mutate(
+    subcounty_clean = subcounty,
+    subcounty_clean = str_replace_all(subcounty_clean, "Sub County", ""),
+    subcounty_clean = str_to_title(str_squish(subcounty_clean))
+  )
+
+#2. Prepare data for join
+data_breast <- Fay_data_bs1 %>%
+  mutate(Subcounty_clean = str_to_title(str_squish(Subcounty_id)))
+
+# 3.Join to shapefile
+map_breast <- kenya_subcounties %>%
+  left_join(data_breast, by = c("subcounty_clean" = "Subcounty_clean"))
+
+# 4.Project CRS
+map_breast_proj <- st_transform(map_breast, crs = 32637)
+
+# 5.Convert to percentages
+map_breast_proj <- map_breast_proj %>%
+  mutate(
+    FH_prob_est = FH_prob_est * 100,
+    FH_lower = FH_lower * 100,
+    FH_upper = FH_upper * 100
+  )
+
+
+
+#6. Plot
+ggplot(map_breast_proj) +
+  geom_sf(aes(fill = FH_prob_est), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Breast Screening (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 80, by = 20),
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Fay-Herriot Intercept-Only Estimates for\n Breast Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+
+```
+
+# CI Width Map for Breast Cancer Screening (FH Intercept-only Model)
+
+```{r}
+
+# Add FH predictions to the Fay_data_bs1 dataframe
+
+Fay_data_bs1 <- Fay_data_bs %>%
+  mutate(
+    FH_logit_est = Fit_bs1$est$eblup,
+    FH_var = Fit_bs10$mse,  # Note: This should probably be Fit_bs1$mse for consistency
+    FH_prob_est = plogis(FH_logit_est),
+    FH_lower = plogis(FH_logit_est - 1.96 * sqrt(FH_var)),
+    FH_upper = plogis(FH_logit_est + 1.96 * sqrt(FH_var)),
+    FH_CI_width = FH_upper - FH_lower
+  )
+# Convert CI width to percentage for easier interpretation
+map_breast_proj <- map_breast_proj %>%
+  mutate(FH_CI_width = FH_CI_width * 100)
+
+# Plot map of CI width by subcounty
+ggplot(map_breast_proj) +
+  geom_sf(aes(fill = FH_CI_width), color = "white", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "CI Width (%)",
+    option = "plasma",
+    direction = 1,
+    breaks = seq(0, 80, by = 20),
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(title = "Confidence Interval Width of Fay-Herriot Intercept-Only Estimates\nfor Breast Cancer Screening by Sub-county") +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    plot.title = element_text(size = 13, face = "bold"),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+```
+
+# Population Density Map by County
+
+```{r}
+
+
+library(sf)
+
+# Load Kenya shapefile containing population and geographic info
+shapefile_path <- "C:/Users/Owner/Downloads/Kenya_2019_Population_Data_KNBS/Kenya_2019_Population_Data_KNBS.shp"
+
+# Read shapefile
+kenya_subcounties_2019 <- st_read(shapefile_path)
+library(dplyr)
+library(sf)
+library(ggplot2)
+
+# Process shapefile: clean county names, group by county, and compute average population density
+kenya_density_county <- kenya_subcounties_2019 %>%
+  mutate(County = tolower(trimws(COUNTY))) %>%
+  group_by(County) %>%
+  summarise(
+    Avg_PopDensity = mean(PopDensity, na.rm = TRUE),
+    geometry = st_union(geometry)
+  ) %>%
+  ungroup()
+
+# Plot map with log-transformed population density
+ggplot(kenya_density_county) +
+  geom_sf(aes(fill = log1p(Avg_PopDensity)), color = "white", size = 0.2) +
+  scale_fill_viridis_c(
+    name = "Log(Pop Density)",
+    option = "plasma",
+    na.value = "grey90"
+  ) +
+  labs(title = "Log-Scaled Population Density by County (2019 Census)") +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 13, face = "bold"),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+
+
+```
+
+
+
+#SE Comparison - Direct vs FH (Breast Screening)
+
+```{r}
+
+# Compute standard errors from variances for both direct and FH estimates
+Fay_data_bs <- Fay_data_bs %>%
+  mutate(
+    se_direct = sqrt(var_direct_bs),
+    se_fh = sqrt(FH_var)
+  )
+
+# Scatter plot to compare standard errors
+library(ggplot2)
+
+ggplot(Fay_data_bs, aes(x = se_direct, y = se_fh)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(
+    x = "SE of Direct Estimate",
+    y = "SE of Fay-Herriot Estimate",
+    title = "Standard Error: Direct vs Fay-Herriot (Breast Screening)"
+  ) +
+  theme_minimal(base_size = 14)
+
+
+
+```
+
+#SE Comparison - Direct vs FH (Cervical Screening)
+```{r}
+
+
+library(ggplot2)
+
+# Compute standard errors for cervical screening data
+Fay_data_cs <- Fay_data_cs %>%
+  mutate(
+    se_direct = sqrt(var_direct_cs),
+    se_fh = sqrt(FH_var)
+  )
+
+# Scatter plot for comparison
+ggplot(Fay_data_cs, aes(x = se_direct, y = se_fh)) +
+  geom_point(color = "blue", alpha = 0.6, size = 2.5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  labs(
+    title = "Standard Error: Direct vs Fay-Herriot (Cervical Screening)",
+    x = "SE of Direct Estimate",
+    y = "SE of Fay-Herriot Estimate"
+  ) +
+  theme_minimal(base_size = 14)
+
+
+
+
+
+```
+
+# Scatter plot comparing direct and FH estimates for cervical screening
+
+```{r}
+
+
+library(ggplot2)
+
+
+ggplot(Fay_data_cs, aes(x = direct_estimate_cs, y = FH_prob_est)) +
+  geom_point(color = "darkgreen", alpha = 0.7, size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  labs(
+    title = "Cervical Screening: Direct vs Fay-Herriot Estimates",
+    x = "Direct Estimate",
+    y = "Fay-Herriot Estimate"
+  ) +
+  theme_minimal(base_size = 13) +
+  coord_equal()  # Ensures x and y axis scales are equal
 
 
 ```
